@@ -238,6 +238,8 @@ class NuScenesDataset(Custom3DDataset):
                 dict(
                     img_filename=image_paths,
                     lidar2img=lidar2img_rts,
+                    img_prefix=None,
+                    img_info=dict(filename=image_paths),
                 ))
 
         if not self.test_mode:

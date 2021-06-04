@@ -41,6 +41,9 @@ class DefaultFormatBundle(object):
                 default bundle.
         """
         if 'img' in results:
+            if len(results['img'].shape) > 3:   # instead of a list its a stacked np array
+                results['img'] = [results['img'][:,:,:, i] for i in range(results['img'].shape[-1])]
+            
             if isinstance(results['img'], list):
                 # process multiple imgs in single frame
                 imgs = [img.transpose(2, 0, 1) for img in results['img']]
