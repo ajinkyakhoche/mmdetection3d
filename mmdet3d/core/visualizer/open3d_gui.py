@@ -258,78 +258,6 @@ class GUIWindow:
         for i in range(self.bbox_count):
             self.widget3d.scene.remove_geometry("Bbox_"+str(i))
 
-    def show_multi_modality_result(self,
-                               img,
-                               gt_bboxes,
-                               pred_bboxes,
-                               proj_mat,
-                               #out_dir,
-                               #filename,
-                               box_mode,
-                               img_metas=None,
-                               #show=False,
-                               gt_bbox_color=(61, 102, 255),
-                               pred_bbox_color=(241, 101, 72)):
-        """Convert multi-modality detection results into 2D results.
-
-        Project the predicted 3D bbox to 2D image plane and visualize them.
-
-        Args:
-            img (np.ndarray): The numpy array of image in cv2 fashion.
-            gt_bboxes (:obj:`BaseInstance3DBoxes`): Ground truth boxes.
-            pred_bboxes (:obj:`BaseInstance3DBoxes`): Predicted boxes.
-            proj_mat (numpy.array, shape=[4, 4]): The projection matrix
-                according to the camera intrinsic parameters.
-            out_dir (str): Path of output directory.
-            filename (str): Filename of the current frame.
-            box_mode (str): Coordinate system the boxes are in.
-                Should be one of 'depth', 'lidar' and 'camera'.
-            img_metas (dict): Used in projecting depth bbox.
-            show (bool): Visualize the results online. Defaults to False.
-            gt_bbox_color (str or tuple(int)): Color of bbox lines.
-            The tuple of color should be in BGR order. Default: (255, 102, 61)
-            pred_bbox_color (str or tuple(int)): Color of bbox lines.
-            The tuple of color should be in BGR order. Default: (72, 101, 241)
-        """
-        if box_mode == 'depth':
-            draw_bbox = draw_depth_bbox3d_on_img
-        elif box_mode == 'lidar':
-            draw_bbox = draw_lidar_bbox3d_on_img
-        elif box_mode == 'camera':
-            draw_bbox = draw_camera_bbox3d_on_img
-        else:
-            raise NotImplementedError(f'unsupported box mode {box_mode}')
-
-        # result_path = osp.join(out_dir, filename)
-        # mmcv.mkdir_or_exist(result_path)
-
-        # if show:
-        #     show_img = img.copy()
-        #     if gt_bboxes is not None:
-        #         show_img = draw_bbox(
-        #             gt_bboxes, show_img, proj_mat, img_metas, color=gt_bbox_color)
-        #     if pred_bboxes is not None:
-        #         show_img = draw_bbox(
-        #             pred_bboxes,
-        #             show_img,
-        #             proj_mat,
-        #             img_metas,
-        #             color=pred_bbox_color)
-        #     mmcv.imshow(show_img, win_name='project_bbox3d_img', wait_time=0)
-
-        # if img is not None:
-        #     mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
-
-        if gt_bboxes is not None:
-            gt_img = draw_bbox(
-                gt_bboxes, img, proj_mat, img_metas, color=gt_bbox_color)
-            # mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
-
-        if pred_bboxes is not None:
-            pred_img = draw_bbox(
-                pred_bboxes, img, proj_mat, img_metas, color=pred_bbox_color)
-            # mmcv.imwrite(pred_img, osp.join(result_path, f'{filename}_pred.png'))
-
     def project_pts_on_img(self,
                         points,
                        raw_img,
@@ -422,31 +350,9 @@ class GUIWindow:
         if gt_bboxes.tensor.shape[0] == 0:
             gt_bboxes = None
         if isinstance(gt_bboxes, DepthInstance3DBoxes):
-            # self.show_multi_modality_result(
-            #     img,
-            #     gt_bboxes,
-            #     None,
-            #     example['calib'],
-            #     #out_dir,
-            #     #filename,
-            #     box_mode='depth',
-            #     img_metas=img_metas,
-            #     #show=show
-            #     )
             draw_bbox = draw_depth_bbox3d_on_img
             proj_mat = prepared_data['calib'][index]
         elif isinstance(gt_bboxes, LiDARInstance3DBoxes):
-            # self.show_multi_modality_result(
-            #     img,
-            #     gt_bboxes,
-            #     None,
-            #     img_metas['lidar2img'],
-            #     #out_dir,
-            #     #filename,
-            #     box_mode='lidar',
-            #     img_metas=img_metas,
-            #     #show=show
-            #     )
             draw_bbox = draw_lidar_bbox3d_on_img
             proj_mat = img_metas['lidar2img'][index]
         elif isinstance(gt_bboxes, CameraInstance3DBoxes):
@@ -454,32 +360,12 @@ class GUIWindow:
             if is_nus_mono:
                 from mmdet3d.core.bbox import mono_cam_box2vis
                 gt_bboxes = mono_cam_box2vis(gt_bboxes)
-            # self.show_multi_modality_result(
-            #     img,
-            #     gt_bboxes,
-            #     None,
-            #     img_metas['cam_intrinsic'],
-            #     #out_dir,
-            #     #filename,
-            #     box_mode='camera',
-            #     img_metas=img_metas,
-            #     #show=show
-            #     )
             draw_bbox = draw_camera_bbox3d_on_img
             proj_mat = img_metas['cam_intrinsic'][index]
         else:
             # can't project, just show img
             warnings.warn(
                 f'unrecognized gt box type {type(gt_bboxes)}, only show image')
-            # self.show_multi_modality_result(
-            #     img,
-            #     None,
-            #     None,
-            #     None,
-            #     #out_dir,
-            #     #filename,
-            #     #show=show
-            #     )
         img_bbox = img.copy()
 
         if gt_bboxes is not None:
@@ -524,10 +410,6 @@ class GUIWindow:
                 # img_tensor = example['img']._data.numpy()
                 if len(example['img']._data.numpy().shape)>3:
                     for index, key in enumerate(self.img_dict):
-                        # img = img_tensor[index,:,:,:]
-                        # img = mmcv.imrescale(img.transpose(1,2,0), (0.25))    #TODO this needs to change if you put 3D bboxes to it
-                        # img = mmcv.bgr2rgb(img)
-                        # self.img_dict[key]['img'] = img.copy()
 
                         self.process_img(index=index,
                                         key=key,
@@ -538,6 +420,7 @@ class GUIWindow:
 
                         # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
                         img = self.img_dict[key]['bbox'].copy()
+                        # TODO: the rescaling factor (or img dim) should be set before hand/ be member var.
                         img = mmcv.imrescale(img, (0.25))
                         # self.img_dict[key].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
                         self.img_dict[key]['widget'].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
