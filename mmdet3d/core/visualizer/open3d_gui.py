@@ -67,48 +67,39 @@ class GUIWindow:
         self.img_rescaling_factor = img_panel_width / self.img_panel_cols / self.img_size[1]    
 
     def init_data_str(self):
-        # data_infos = self.dataset.data_infos
-        # modality = self.dataset.modality
+        data_infos = self.dataset.data_infos
+        modality = self.dataset.modality
+            
+        if modality['use_lidar']:
+            # TODO: change logic for multi-lidar setup?
+            self.pcd = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
+            self.pcd.point["points"] = self._make_tcloud_array(np.random.rand(100,3)*10)
 
-        if self.modality['use_lidar']:
-            # if data_infos[0]['lidar_path'] is not '':  # TODO: change logic for multi-lidar setup? #TODO: this is Nuscenes, Lyft, Argo specific
-            if self.data_info_lidar is not '':
-                # self.pcd_dict = {'LIDAR_TOP': o3d.geometry.PointCloud}
-                # self.pcd_dict = {'LIDAR_TOP': np.zeros((100,4))}
-                self.pcd = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
-                self.pcd.point["points"] = self._make_tcloud_array(np.random.rand(100,3)*10)
+            self.pcd_mat = rendering.Material()
+            self.pcd_mat.shader = "defaultLit"
 
-                self.pcd_mat = rendering.Material()
-                self.pcd_mat.shader = "defaultLit"
+            self.bbox_mat = rendering.Material()
+            self.bbox_mat.shader = "unlitLine"
+            self.bbox_mat.line_width = 2 * self.window.scaling
 
-                self.bbox_mat = rendering.Material()
-                self.bbox_mat.shader = "unlitLine"
-                self.bbox_mat.line_width = 2 * self.window.scaling
+            self.bbox_count = 0
 
-                self.bbox_count = 0
+        if modality['use_camera']:
+            self.img_dict = dict()
+            # TODO: what if only some cameras need to be displayed?
+            for key, value in self.panel_2_cam.items():
+                self.img_dict[value] = {
+                    'img': np.zeros(self.img_size).astype(np.uint8),
+                    'overlay': np.zeros(self.img_size).astype(np.uint8),
+                    'bbox': np.zeros(self.img_size).astype(np.uint8),
+                    'widget': gui.ImageWidget(o3d.geometry.Image())
+                }
 
-        if self.modality['use_camera']:
-            # if bool(data_infos[0]['cams']):
-            if isinstance(self.data_info_camera, dict):
-                self.img_dict = dict()
-                # for key, _ in data_infos[0]['cams'].items():  # TODO: this is a hack
-                # for key, _ in self.data_info_camera.items():
-                for key, value in self.panel_2_cam.items():
-                    # self.img_dict[key] = gui.ImageWidget(o3d.geometry.Image(np.zeros((1,1,3)).astype(np.uint8)))
-                    self.img_dict[value] = {
-                        'img': np.zeros((1,1,3)).astype(np.uint8),
-                        'overlay': np.zeros((1,1,3)).astype(np.uint8),
-                        'bbox': np.zeros((1,1,3)).astype(np.uint8),
-                        'widget': gui.ImageWidget(o3d.geometry.Image())
-                    }
-
-        if 'use_radar' in self.modality and self.modality['use_radar']:  # TODO: this doesn't work yet.
-            # if bool(data_infos[0]['radars']):
-            if self.data_info_radar:
-                self.radar_dict = dict()
-                # for key, _ in data_infos[0]['radars'].items():
-                for key, _ in self.data_info_radar.items():
-                    self.radar_dict[key] = o3d.geometry.PointCloud
+        if 'use_radar' in modality and modality['use_radar']:  # TODO: this doesn't work yet.
+            self.radar_dict = dict()
+            # for key, _ in data_infos[0]['radars'].items():
+            for key, _ in self.data_info_radar.items():
+                self.radar_dict[key] = o3d.geometry.PointCloud
 
         #TODO: its possible to initialize more structures based on metadata in self.dataset
         # eg HD Map, or based on class_names of annotated 3D bboxes, semantic segmentation etc
@@ -120,13 +111,11 @@ class GUIWindow:
         # sample = self.get_stitched_pcd()
         # self.widget3d.scene.add_geometry("Stitched PC", sample, lit) # TODO: (',').join( list(data_infos[0]['cams'].keys()))
         self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
-        # bounds = self.widget3d.scene.bounding_box
-        # self.widget3d.setup_camera(60.0, bounds, bounds.get_center()) #NOTE: set this carefully!
-        self.widget3d.setup_camera(60.0, self.bounds, self.bounds.get_center())
+        #NOTE: set bounds carefully! else the visualizer zooms in excessively
+        self.widget3d.setup_camera(60.0, self.bounds, self.bounds.get_center()) 
         self.widget3d.scene.show_axes(True)
         self.window.add_child(self.widget3d)
 
-        # em = self.window.theme.font_size
         margin = 0.25 * self.em
         self.img_panel = gui.VGrid(self.img_panel_cols, margin)
 
@@ -148,32 +137,14 @@ class GUIWindow:
                 5: 'CAM_BACK_RIGHT'
             }
 
-            self.data_infos = self.dataset.data_infos
-            self.modality = self.dataset.modality
-            if self.modality['use_lidar']:
-                self.data_info_lidar = self.data_infos[0]['lidar_path']
-            if self.modality['use_camera']:
-                self.data_info_camera = self.data_infos[0]['cams']
-            if self.modality['use_radar']:
-                self.data_info_radar = self.data_infos[0]['radars']
-            if self.modality['use_map']:
-                raise ValueError('HD Maps not yet implemented')
-            
             self.img_panel_cols = 3     # number of columns in the image panel
-            self.img_size = mmcv.imread(self.data_info_camera[self.panel_2_cam[0]]['data_path']).shape  # height, width, # of channels
+            self.img_size = mmcv.imread(self.dataset.data_infos[0]['cams'][self.panel_2_cam[0]]['data_path']).shape  # height, width, # of channels
 
         elif self.dataset_type in ['KittiDataset']:
             self.panel_2_cam = {
                 0: 'CAM_FRONT_LEFT',
-                #1: 'CAM_FRONT_RIGHT',
+                #1: 'CAM_FRONT_RIGHT',  # TODO: mmdetection doesn't read the right image 
             }
-
-            self.data_infos = self.dataset.data_infos
-            self.modality = self.dataset.modality
-            if self.modality['use_lidar']:
-                self.data_info_lidar = self.data_infos[0]['point_cloud']
-            if self.modality['use_camera']:
-                self.data_info_camera = self.data_infos[0]['image']
             
             self.img_panel_cols = 1     # number of columns in the image panel
             self.img_size = mmcv.imread(osp.join(self.dataset.data_root, self.data_info_camera['image_path'])).shape    # height, width, # of channels
@@ -433,10 +404,10 @@ class GUIWindow:
     def _update_thread(self):
         # # This is NOT the UI thread, need to call post_to_main_thread() to update
         # # the scene or any part of the UI.
-        # data_infos = self.dataset.data_infos
+        data_infos = self.dataset.data_infos
         # dataset_type = self.dataset_type
 
-        for idx, data_info in enumerate(track_iter_progress(self.data_infos)):
+        for idx, data_info in enumerate(track_iter_progress(data_infos)):
             example = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
             gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
 
