@@ -395,27 +395,24 @@ class GUIWindow:
         data_infos = self.dataset.data_infos
         
         for idx, data_info in enumerate(track_iter_progress(data_infos)):
-            example = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
+            prepared_data = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
             gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
 
-            # Update the images. This must be done on the UI thread.
+            # Update the scene. This must be done on the UI thread.
             def update():
-                # self.pcd_dict['LIDAR_TOP'] = example['points']._data.numpy()
+                # self.pcd_dict['LIDAR_TOP'] = prepared_data['points']._data.numpy()
                 # self.widget3d.scene.remove_geometry("Stitched PC")
                 self.clean_widget_3d()
-                self.pcd.point["points"] = self._make_tcloud_array(example['points']._data.numpy()[:,:3])
+                self.pcd.point["points"] = self._make_tcloud_array(prepared_data['points']._data.numpy()[:,:3])
                 # self.widget3d.scene.add_geometry("Stitched PC", self.get_stitched_pcd(), lit)
                 self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
                 # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
                 self.add_bboxes(bbox3d=gt_bboxes.tensor, bbox_color=(0, 0, 1))
 
-                # img_tensor = example['img']._data.numpy()
-                # if len(example['img']._data.numpy().shape)>=3:
                 for index, key in enumerate(self.img_dict):
-
                     self.process_img(index=index,
                                     key=key,
-                                    prepared_data=example,
+                                    prepared_data=prepared_data,
                                     gt_bboxes=gt_bboxes)
 
                     # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
@@ -427,7 +424,8 @@ class GUIWindow:
             if not self.is_done:
                 gui.Application.instance.post_to_main_thread(
                     self.window, update)
-
+            else:
+                break
         self.is_done = True
 
 def main():
