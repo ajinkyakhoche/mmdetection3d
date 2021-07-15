@@ -338,23 +338,15 @@ class GUIWindow:
         Visualize 3D bboxes on 2D image by projection.
         source: show_proj_bbox_img and show_multi_modality_result
         """
-        # try:
-        #     example = dataset.prepare_train_data(idx)
-        # except AttributeError:  # for Mono-3D datasets
-        #     example = dataset.prepare_train_img(idx)
-        # gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d']
         img_metas = prepared_data['img_metas']._data
-        # img = example['img']._data.numpy()
-        # # need to transpose channel to first dim
-        # img = img.transpose(1, 2, 0)
-        # # no 3D gt bboxes, just show img
-        
+
         length_img_list = len(prepared_data['img']._data.numpy().shape) 
         if length_img_list > 3:
             img = prepared_data['img']._data.numpy()[index,:,:,:]
         else:
             img = prepared_data['img']._data.numpy()
-        
+
+        # need to transpose channel to first dim
         img = img.transpose(1,2,0)
         img = mmcv.bgr2rgb(img)
         self.img_dict[key]['img'] = img.copy()
@@ -363,11 +355,9 @@ class GUIWindow:
             gt_bboxes = None
         if isinstance(gt_bboxes, DepthInstance3DBoxes):
             draw_bbox = draw_depth_bbox3d_on_img
-            # proj_mat = prepared_data['calib'][index]
             proj_mat = prepared_data['calib'][index] if length_img_list > 3 else prepared_data['calib']
         elif isinstance(gt_bboxes, LiDARInstance3DBoxes):
             draw_bbox = draw_lidar_bbox3d_on_img
-            # proj_mat = img_metas['lidar2img'][index]
             proj_mat = img_metas['lidar2img'][index] if length_img_list > 3 else img_metas['lidar2img']
         elif isinstance(gt_bboxes, CameraInstance3DBoxes):
             # TODO: remove the hack of box from NuScenesMonoDataset
@@ -375,7 +365,6 @@ class GUIWindow:
                 from mmdet3d.core.bbox import mono_cam_box2vis
                 gt_bboxes = mono_cam_box2vis(gt_bboxes)
             draw_bbox = draw_camera_bbox3d_on_img
-            # proj_mat = img_metas['cam_intrinsic'][index]
             proj_mat = img_metas['cam_intrinsic'][index] if length_img_list > 3 else img_metas['cam_intrinsic']
         else:
             # can't project, just show img
@@ -386,8 +375,7 @@ class GUIWindow:
         if gt_bboxes is not None:
             img_bbox = draw_bbox(
                 gt_bboxes, img_bbox, proj_mat, img_metas, color=gt_bbox_color, thickness=3)
-            # mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
-
+            
         if pred_bboxes is not None:
             img_bbox = draw_bbox(
                 pred_bboxes, img_bbox.copy(), proj_mat, img_metas, color=pred_bbox_color, thickness=1)
@@ -405,8 +393,7 @@ class GUIWindow:
         # # This is NOT the UI thread, need to call post_to_main_thread() to update
         # # the scene or any part of the UI.
         data_infos = self.dataset.data_infos
-        # dataset_type = self.dataset_type
-
+        
         for idx, data_info in enumerate(track_iter_progress(data_infos)):
             example = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
             gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
@@ -429,14 +416,10 @@ class GUIWindow:
                     self.process_img(index=index,
                                     key=key,
                                     prepared_data=example,
-                                    # calib=calib,
-                                    # img_metas=img_metas,
                                     gt_bboxes=gt_bboxes)
 
                     # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
                     img = self.img_dict[key]['bbox'].copy()
-                    # TODO: the rescaling factor (or img dim) should be set before hand/ be member var.
-                    # img = mmcv.imrescale(img, (0.25))
                     img = mmcv.imrescale(img, (self.img_rescaling_factor))
                     # self.img_dict[key].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
                     self.img_dict[key]['widget'].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
