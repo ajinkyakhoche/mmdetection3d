@@ -45,7 +45,7 @@ class GUIWindow:
         self.init_data_str()
         self.init_user_interface()
 
-        self.pause = False
+        self.pause = True
         self.index = 0
         self.is_done = False
         threading.Thread(target=self._update_thread).start()
@@ -76,9 +76,9 @@ class GUIWindow:
         modality = self.dataset.modality
             
         if modality['use_lidar']:
-            # TODO: change logic for multi-lidar setup?
+            # # TODO: change logic for multi-lidar setup?
             self.pcd = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
-            self.pcd.point["points"] = self._make_tcloud_array(np.random.rand(100,3)*10)
+            # self.pcd.point["points"] = self._make_tcloud_array(np.random.rand(100,3)*10)
 
             self.pcd_mat = rendering.Material()
             self.pcd_mat.shader = "defaultLit"
@@ -92,8 +92,8 @@ class GUIWindow:
         if modality['use_camera']:
             self.img_dict = dict()
             # TODO: what if only some cameras need to be displayed?
-            for key, value in self.panel_2_cam.items():
-                self.img_dict[value] = {
+            for cam in self.dataset_camera_order:
+                self.img_dict[cam] = {
                     'img': np.zeros(self.img_size).astype(np.uint8),
                     'overlay': np.zeros(self.img_size).astype(np.uint8),
                     'bbox': np.zeros(self.img_size).astype(np.uint8),
@@ -178,12 +178,21 @@ class GUIWindow:
     def _on_prev(self):
         if self.pause:
             print("Processing Previous frame")
+            self.index -= 1
+            self.get_prepared_data(self.index)
+
+            if not self.is_done:
+                gui.Application.instance.post_to_main_thread(
+                    self.window, self.update)
         else:
             print('Press Pause first')
         return
 
     def set_dataset_specific_prop(self):
         if self.dataset_type in ['NuScenesDataset', 'LyftDataset']: #TODO: ArgoDataset
+            # order in which imgs/cameras are arranged internally in the dataset 
+            self.dataset_camera_order = list(self.dataset.data_infos[0]['cams'].keys())
+            # order in which imgs/cameras should be displayed in the GUI
             self.panel_2_cam = {
                 0: 'CAM_FRONT_LEFT',
                 1: 'CAM_FRONT',
@@ -192,11 +201,15 @@ class GUIWindow:
                 4: 'CAM_BACK',
                 5: 'CAM_BACK_RIGHT'
             }
-
+            
             self.img_panel_cols = 3     # number of columns in the image panel
             self.img_size = mmcv.imread(self.dataset.data_infos[0]['cams'][self.panel_2_cam[0]]['data_path']).shape  # height, width, # of channels
 
         elif self.dataset_type in ['KittiDataset']:
+            self.dataset_camera_order = [   # This is a hack
+                'CAM_FRONT_LEFT',
+                # 'CAM_FRONT_RIGHT'
+            ]
             self.panel_2_cam = {
                 0: 'CAM_FRONT_LEFT',
                 #1: 'CAM_FRONT_RIGHT',  # TODO: mmdetection doesn't read the right image 
@@ -447,19 +460,54 @@ class GUIWindow:
     
     # Update the scene. This must be done on the UI thread.
     def update(self):
+        # clean existing geometry 
         # self.pcd_dict['LIDAR_TOP'] = prepared_data['points']._data.numpy()
         # self.widget3d.scene.remove_geometry("Stitched PC")
         self.clean_widget_3d()
-        self.pcd.point["points"] = self._make_tcloud_array(self.prepared_data['points']._data.numpy()[:,:3])
+
+        # update point cloud 
+        attr = self.prepared_data['points']._data.numpy()[:,:3]
+        self.pcd.point["points"] = self._make_tcloud_array(attr)
+        # Update scalar values, source: ml3d/vis/visualizer.py
+        if attr is not None:
+            if len(attr.shape) == 1:
+                scalar = attr
+            else:
+                # channel = max(0, self._colormap_channel.selected_index)
+                channel = 0     #TODO: set this from GUI
+                scalar = attr[:, channel]
+        else:
+            # shape = [len(tcloud.point["points"].numpy())]
+            shape = [len(self.pcd.point["points"].numpy())]
+            scalar = np.zeros(shape, dtype='float32')
+        # tcloud.point["__visualization_scalar"] = Visualizer._make_tcloud_array(
+        #     scalar)
+        self.pcd.point["__visualization_scalar"] = self._make_tcloud_array(
+            scalar)
+
+        
+        # flag |= rendering.Scene.UPDATE_UV0_FLAG
+
+        # Update RGB values
+        if attr is not None and (len(attr.shape) == 2 and attr.shape[1] >= 3):
+            # max_val = float(self._rgb_combo.selected_text)
+            max_val = 255   # TODO: set this from GUI
+            if max_val <= 0:
+                max_val = 255.0
+            colors = attr[:, [0, 1, 2]] * (1.0 / max_val)
+            # tcloud.point["colors"] = Visualizer._make_tcloud_array(colors)
+            self.pcd.point["colors"] = self._make_tcloud_array(colors)
+            # flag |= rendering.Scene.UPDATE_COLORS_FLAG
+
         # self.widget3d.scene.add_geometry("Stitched PC", self.get_stitched_pcd(), lit)
         self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
         # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
         self.add_bboxes(bbox3d=self.gt_bboxes.tensor, bbox_color=(0, 0, 1))
 
-        for index, key in enumerate(self.img_dict):
-            self.process_img(index=index,
+        for idx, key in enumerate(self.img_dict):
+            self.process_img(index=idx,
                             key=key,
-                            prepared_data=self.prepared_data,
+                            prepared_data=self.prepared_data,   # TODO: remove this arg
                             gt_bboxes=self.gt_bboxes)
 
             # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
@@ -483,9 +531,6 @@ class GUIWindow:
             # self.gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
 
         while True:
-            if self.pause:
-                self.event.wait()
-            
             # Prepare data, passing index is symbolic
             self.get_prepared_data(self.index)
 
@@ -499,6 +544,10 @@ class GUIWindow:
             else:
                 gui.Application.instance.quit()
                 break
+            
+            if self.pause:
+                self.event.wait()
+            
         # self.is_done = True
 
 def main():
