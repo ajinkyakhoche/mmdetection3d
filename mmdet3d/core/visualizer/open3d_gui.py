@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # Source: https://github.com/intel-isl/Open3D/blob/master/examples/python/gui/video.py
+from concurrent.futures import thread
 import numpy as np
 import open3d as o3d
 import open3d.visualization.gui as gui
@@ -44,8 +45,12 @@ class GUIWindow:
         self.init_data_str()
         self.init_user_interface()
 
+        self.pause = False
+        self.index = 0
         self.is_done = False
         threading.Thread(target=self._update_thread).start()
+
+        self.event = threading.Event()
 
     def _on_layout(self, layout_context):
         contentRect = self.window.content_rect
@@ -59,9 +64,9 @@ class GUIWindow:
         self.img_panel.frame = gui.Rect(self.widget3d.frame.get_right(),
                                     contentRect.y, img_panel_width,
                                     contentRect.height)
-        # self.metadata_panel.frame = gui.Rect(self.contentRect.x, self.widget3d.frame.get_bottom(),
-        #                             self.widget3d.frame.get_right(),
-        #                             contentRect.height)
+        self.metadata_panel.frame = gui.Rect(contentRect.x, self.widget3d.frame.get_bottom(),
+                                    self.widget3d.frame.get_right(),
+                                    metadata_panel_height)
         
         # factor by which to rescale images to fit the image panel
         self.img_rescaling_factor = img_panel_width / self.img_panel_cols / self.img_size[1]    
@@ -124,7 +129,58 @@ class GUIWindow:
 
         self.window.add_child(self.img_panel)
 
+        # self.metadata_panel = gui.Horiz()
+        self.metadata_panel = gui.VGrid(3, margin)
+
+        prev_button = gui.Button("<")
+        prev_button.horizontal_padding_em = 0.5
+        prev_button.vertical_padding_em = 0.5
+        prev_button.set_on_clicked(self._on_prev)
+        self.metadata_panel.add_child(prev_button)
+
+        pause_button = gui.Button("Pause")
+        pause_button.horizontal_padding_em = 0.5
+        pause_button.vertical_padding_em = 0.5
+        pause_button.set_on_clicked(self._on_pause)
+        # self.metadata_panel.add_stretch()
+        self.metadata_panel.add_child(pause_button)
+        
+        next_button = gui.Button(">")
+        next_button.horizontal_padding_em = 0.5
+        next_button.vertical_padding_em = 0.5
+        next_button.set_on_clicked(self._on_next)
+        self.metadata_panel.add_child(next_button)
+        
+        self.window.add_child(self.metadata_panel)
         #TODO: add for radar and HD Maps?
+
+    def _on_pause(self):
+        self.pause = not(self.pause)
+        if not self.pause:
+            self.event.set()
+            self.event = threading.Event() 
+        # print(self.pause)
+        return
+
+    def _on_next(self):
+        if self.pause:
+            print("Processing Next frame")
+            self.index += 1
+            self.get_prepared_data(self.index)
+
+            if not self.is_done:
+                gui.Application.instance.post_to_main_thread(
+                    self.window, self.update)
+        else:
+            print('Press Pause first')
+        return
+
+    def _on_prev(self):
+        if self.pause:
+            print("Processing Previous frame")
+        else:
+            print('Press Pause first')
+        return
 
     def set_dataset_specific_prop(self):
         if self.dataset_type in ['NuScenesDataset', 'LyftDataset']: #TODO: ArgoDataset
@@ -147,7 +203,7 @@ class GUIWindow:
             }
             
             self.img_panel_cols = 1     # number of columns in the image panel
-            self.img_size = mmcv.imread(osp.join(self.dataset.data_root, self.data_info_camera['image_path'])).shape    # height, width, # of channels
+            self.img_size = mmcv.imread(osp.join(self.dataset.data_root, self.dataset.data_infos[0]['image']['image_path'])).shape    # height, width, # of channels
 
             # TODO: data_path and file_path can be set here too
 
@@ -388,45 +444,62 @@ class GUIWindow:
         #                     proj_mat,
         #                     thickness=2)
         
+    
+    # Update the scene. This must be done on the UI thread.
+    def update(self):
+        # self.pcd_dict['LIDAR_TOP'] = prepared_data['points']._data.numpy()
+        # self.widget3d.scene.remove_geometry("Stitched PC")
+        self.clean_widget_3d()
+        self.pcd.point["points"] = self._make_tcloud_array(self.prepared_data['points']._data.numpy()[:,:3])
+        # self.widget3d.scene.add_geometry("Stitched PC", self.get_stitched_pcd(), lit)
+        self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
+        # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
+        self.add_bboxes(bbox3d=self.gt_bboxes.tensor, bbox_color=(0, 0, 1))
+
+        for index, key in enumerate(self.img_dict):
+            self.process_img(index=index,
+                            key=key,
+                            prepared_data=self.prepared_data,
+                            gt_bboxes=self.gt_bboxes)
+
+            # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
+            img = self.img_dict[key]['bbox'].copy()
+            img = mmcv.imrescale(img, (self.img_rescaling_factor))
+            # self.img_dict[key].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
+            self.img_dict[key]['widget'].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
+
+    def get_prepared_data(self, index):
+        self.prepared_data = self.dataset.prepare_train_data(index)  # this already has loaded pc and img, img_meta
+        self.gt_bboxes = self.dataset.get_ann_info(index)['gt_bboxes_3d']
+        return True
 
     def _update_thread(self):
         # # This is NOT the UI thread, need to call post_to_main_thread() to update
         # # the scene or any part of the UI.
-        data_infos = self.dataset.data_infos
+        # data_infos = self.dataset.data_infos
         
-        for idx, data_info in enumerate(track_iter_progress(data_infos)):
-            prepared_data = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
-            gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
+        # for idx, data_info in enumerate(track_iter_progress(data_infos)):
+            # self.prepared_data = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
+            # self.gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
 
-            # Update the scene. This must be done on the UI thread.
-            def update():
-                # self.pcd_dict['LIDAR_TOP'] = prepared_data['points']._data.numpy()
-                # self.widget3d.scene.remove_geometry("Stitched PC")
-                self.clean_widget_3d()
-                self.pcd.point["points"] = self._make_tcloud_array(prepared_data['points']._data.numpy()[:,:3])
-                # self.widget3d.scene.add_geometry("Stitched PC", self.get_stitched_pcd(), lit)
-                self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
-                # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
-                self.add_bboxes(bbox3d=gt_bboxes.tensor, bbox_color=(0, 0, 1))
+        while True:
+            if self.pause:
+                self.event.wait()
+            
+            # Prepare data, passing index is symbolic
+            self.get_prepared_data(self.index)
 
-                for index, key in enumerate(self.img_dict):
-                    self.process_img(index=index,
-                                    key=key,
-                                    prepared_data=prepared_data,
-                                    gt_bboxes=gt_bboxes)
-
-                    # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
-                    img = self.img_dict[key]['bbox'].copy()
-                    img = mmcv.imrescale(img, (self.img_rescaling_factor))
-                    # self.img_dict[key].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
-                    self.img_dict[key]['widget'].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
-
+            self.index += 1
+            if self.index >= len(self.dataset.data_infos):
+                self.is_done = True 
+            
             if not self.is_done:
                 gui.Application.instance.post_to_main_thread(
-                    self.window, update)
+                    self.window, self.update)
             else:
+                gui.Application.instance.quit()
                 break
-        self.is_done = True
+        # self.is_done = True
 
 def main():
     app = o3d.visualization.gui.Application.instance
