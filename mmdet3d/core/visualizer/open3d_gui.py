@@ -21,6 +21,7 @@ import warnings
 from matplotlib import pyplot as plt
 import cv2
 
+
 class GUIWindow:
     """
     This class serves as an experimental Graphical User Interface for an mmdetection3d dataset
@@ -29,15 +30,17 @@ class GUIWindow:
         dataset (mmdet3d.datasets.xx): The dataset for which visualizer is created.
 
     """
-    def __init__(self, dataset, dataset_type, point_cloud_range, monitor_width = 1920, monitor_height = 1080):
+
+    def __init__(self, dataset, dataset_type, point_cloud_range, monitor_width=1920, monitor_height=1080):
 
         self.dataset = dataset
         self.dataset_type = dataset_type
-        self.bounds = o3d.geometry.AxisAlignedBoundingBox(point_cloud_range[:3], point_cloud_range[3:])
+        self.bounds = o3d.geometry.AxisAlignedBoundingBox(
+            point_cloud_range[:3], point_cloud_range[3:])
         self.set_dataset_specific_prop()
 
         self.window = gui.Application.instance.create_window(
-            "GUI - Visualizer", monitor_width, monitor_height) #TODO: try to get monitor res?
+            "GUI - Visualizer", monitor_width, monitor_height)  # TODO: try to get monitor res?
         self.em = self.window.theme.font_size
         self.window.set_on_layout(self._on_layout)
         self.window.set_on_close(self._on_close)
@@ -49,12 +52,10 @@ class GUIWindow:
         self.index = 0
         self.is_done = False
         threading.Thread(target=self._update_thread).start()
-
         self.event = threading.Event()
 
     def _on_layout(self, layout_context):
         contentRect = self.window.content_rect
-
         img_panel_width = 75 * self.em  # where 1 em = 16 px
         metadata_panel_height = 7.5 * self.em
 
@@ -62,27 +63,26 @@ class GUIWindow:
                                        contentRect.width - img_panel_width,
                                        contentRect.height - metadata_panel_height)
         self.img_panel.frame = gui.Rect(self.widget3d.frame.get_right(),
-                                    contentRect.y, img_panel_width,
-                                    contentRect.height)
+                                        contentRect.y, img_panel_width,
+                                        contentRect.height)
         self.metadata_panel.frame = gui.Rect(contentRect.x, self.widget3d.frame.get_bottom(),
-                                    self.widget3d.frame.get_right(),
-                                    metadata_panel_height)
-        
+                                             self.widget3d.frame.get_right(),
+                                             metadata_panel_height)
+
         # factor by which to rescale images to fit the image panel
-        self.img_rescaling_factor = img_panel_width / self.img_panel_cols / self.img_size[1]    
+        self.img_rescaling_factor = img_panel_width / \
+            self.img_panel_cols / self.img_size[1]
 
     def init_data_str(self):
         data_infos = self.dataset.data_infos
         modality = self.dataset.modality
-            
+
         if modality['use_lidar']:
             # # TODO: change logic for multi-lidar setup?
             self.pcd = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
             # self.pcd.point["points"] = self._make_tcloud_array(np.random.rand(100,3)*10)
-
             self.pcd_mat = rendering.Material()
             self.pcd_mat.shader = "defaultLit"
-
             self.bbox_mat = rendering.Material()
             self.bbox_mat.shader = "unlitLine"
             self.bbox_mat.line_width = 2 * self.window.scaling
@@ -100,33 +100,32 @@ class GUIWindow:
                     'widget': gui.ImageWidget(o3d.geometry.Image())
                 }
 
-        if 'use_radar' in modality and modality['use_radar']:  # TODO: this doesn't work yet.
+        # TODO: this doesn't work yet.
+        if 'use_radar' in modality and modality['use_radar']:
             self.radar_dict = dict()
             # for key, _ in data_infos[0]['radars'].items():
             for key, _ in self.data_info_radar.items():
                 self.radar_dict[key] = o3d.geometry.PointCloud
 
-        #TODO: its possible to initialize more structures based on metadata in self.dataset
+        # TODO: its possible to initialize more structures based on metadata in self.dataset
         # eg HD Map, or based on class_names of annotated 3D bboxes, semantic segmentation etc
 
     def init_user_interface(self):
         self.widget3d = gui.SceneWidget()
         self.widget3d.scene = rendering.Open3DScene(self.window.renderer)
-
         # sample = self.get_stitched_pcd()
         # self.widget3d.scene.add_geometry("Stitched PC", sample, lit) # TODO: (',').join( list(data_infos[0]['cams'].keys()))
         self.widget3d.scene.add_geometry("Stitched PC", self.pcd, self.pcd_mat)
-        #NOTE: set bounds carefully! else the visualizer zooms in excessively
-        self.widget3d.setup_camera(60.0, self.bounds, self.bounds.get_center()) 
+        # NOTE: set bounds carefully! else the visualizer zooms in excessively
+        self.widget3d.setup_camera(60.0, self.bounds, self.bounds.get_center())
         self.widget3d.scene.show_axes(True)
         self.window.add_child(self.widget3d)
 
         margin = 0.25 * self.em
         self.img_panel = gui.VGrid(self.img_panel_cols, margin)
-
         for index, _ in enumerate(self.panel_2_cam):
-            self.img_panel.add_child(self.img_dict[self.panel_2_cam[index]]['widget'])
-
+            self.img_panel.add_child(
+                self.img_dict[self.panel_2_cam[index]]['widget'])
         self.window.add_child(self.img_panel)
 
         # self.metadata_panel = gui.Horiz()
@@ -144,21 +143,21 @@ class GUIWindow:
         pause_button.set_on_clicked(self._on_pause)
         # self.metadata_panel.add_stretch()
         self.metadata_panel.add_child(pause_button)
-        
+
         next_button = gui.Button(">")
         next_button.horizontal_padding_em = 0.5
         next_button.vertical_padding_em = 0.5
         next_button.set_on_clicked(self._on_next)
         self.metadata_panel.add_child(next_button)
-        
+
         self.window.add_child(self.metadata_panel)
-        #TODO: add for radar and HD Maps?
+        # TODO: add for radar and HD Maps?
 
     def _on_pause(self):
         self.pause = not(self.pause)
         if not self.pause:
             self.event.set()
-            self.event = threading.Event() 
+            self.event = threading.Event()
         # print(self.pause)
         return
 
@@ -167,7 +166,6 @@ class GUIWindow:
             print("Processing Next frame")
             self.index += 1
             self.get_prepared_data(self.index)
-
             if not self.is_done:
                 gui.Application.instance.post_to_main_thread(
                     self.window, self.update)
@@ -180,7 +178,6 @@ class GUIWindow:
             print("Processing Previous frame")
             self.index -= 1
             self.get_prepared_data(self.index)
-
             if not self.is_done:
                 gui.Application.instance.post_to_main_thread(
                     self.window, self.update)
@@ -189,9 +186,10 @@ class GUIWindow:
         return
 
     def set_dataset_specific_prop(self):
-        if self.dataset_type in ['NuScenesDataset', 'LyftDataset']: #TODO: ArgoDataset
-            # order in which imgs/cameras are arranged internally in the dataset 
-            self.dataset_camera_order = list(self.dataset.data_infos[0]['cams'].keys())
+        if self.dataset_type in ['NuScenesDataset', 'LyftDataset']:  # TODO: ArgoDataset
+            # order in which imgs/cameras are arranged internally in the dataset
+            self.dataset_camera_order = list(
+                self.dataset.data_infos[0]['cams'].keys())
             # order in which imgs/cameras should be displayed in the GUI
             self.panel_2_cam = {
                 0: 'CAM_FRONT_LEFT',
@@ -201,9 +199,10 @@ class GUIWindow:
                 4: 'CAM_BACK',
                 5: 'CAM_BACK_RIGHT'
             }
-            
             self.img_panel_cols = 3     # number of columns in the image panel
-            self.img_size = mmcv.imread(self.dataset.data_infos[0]['cams'][self.panel_2_cam[0]]['data_path']).shape  # height, width, # of channels
+            # height, width, # of channels
+            self.img_size = mmcv.imread(
+                self.dataset.data_infos[0]['cams'][self.panel_2_cam[0]]['data_path']).shape
 
         elif self.dataset_type in ['KittiDataset']:
             self.dataset_camera_order = [   # This is a hack
@@ -212,11 +211,12 @@ class GUIWindow:
             ]
             self.panel_2_cam = {
                 0: 'CAM_FRONT_LEFT',
-                #1: 'CAM_FRONT_RIGHT',  # TODO: mmdetection doesn't read the right image 
+                # 1: 'CAM_FRONT_RIGHT',  # TODO: mmdetection doesn't read the right image
             }
-            
             self.img_panel_cols = 1     # number of columns in the image panel
-            self.img_size = mmcv.imread(osp.join(self.dataset.data_root, self.dataset.data_infos[0]['image']['image_path'])).shape    # height, width, # of channels
+            # height, width, # of channels
+            self.img_size = mmcv.imread(osp.join(
+                self.dataset.data_root, self.dataset.data_infos[0]['image']['image_path'])).shape
 
             # TODO: data_path and file_path can be set here too
 
@@ -224,7 +224,8 @@ class GUIWindow:
         # TODO: this needs to be modified for multi-lidar setup
         # return self.pcd_dict['LIDAR_TOP']
         a = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
-        a.point["points"] = o3d.core.Tensor.from_numpy(np.ascontiguousarray(self.pcd_dict['LIDAR_TOP'][:,:3]))
+        a.point["points"] = o3d.core.Tensor.from_numpy(
+            np.ascontiguousarray(self.pcd_dict['LIDAR_TOP'][:, :3]))
         return a
 
     def _make_tcloud_array(self, np_array, copy=False):
@@ -238,14 +239,14 @@ class GUIWindow:
         return True  # False would cancel the close
 
     def _draw_bboxes(self, bbox3d,
-                 vis=None,
-                 points_colors=None,
-                 pcd=None,
-                 bbox_color=(0, 1, 0),
-                 points_in_box_color=(1, 0, 0),
-                 rot_axis=2,
-                 center_mode='lidar_bottom',
-                 mode='xyz'):
+                     vis=None,
+                     points_colors=None,
+                     pcd=None,
+                     bbox_color=(0, 1, 0),
+                     points_in_box_color=(1, 0, 0),
+                     rot_axis=2,
+                     center_mode='lidar_bottom',
+                     mode='xyz'):
         """Draw bbox on visualizer and change the color of points inside bbox3d.
 
         Args:
@@ -286,15 +287,16 @@ class GUIWindow:
                     rot_axis] / 2  # bottom center to gravity center
             box3d = o3d.geometry.OrientedBoundingBox(center, rot_mat, dim)
 
-            line_set = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
+            line_set = o3d.geometry.LineSet.create_from_oriented_bounding_box(
+                box3d)
             line_set.paint_uniform_color(bbox_color)
 
             # TODO: this is a hack, need to somehow update_geometry
             # if self.widget3d.scene.has_geometry("BBox_"+str(i)):
             #     self.widget3d.scene.remove_geometry("BBox_"+str(i))
 
-
-            self.widget3d.scene.add_geometry("Bbox_"+str(i), line_set, self.bbox_mat)
+            self.widget3d.scene.add_geometry(
+                "Bbox_"+str(i), line_set, self.bbox_mat)
         #     # draw bboxes on visualizer
         #     vis.add_geometry(line_set)
 
@@ -336,11 +338,11 @@ class GUIWindow:
             self.widget3d.scene.remove_geometry("Bbox_"+str(i))
 
     def project_pts_on_img(self,
-                        points,
-                       raw_img,
-                       lidar2img_rt,
-                       max_distance=70,
-                       thickness=-1):
+                           points,
+                           raw_img,
+                           lidar2img_rt,
+                           max_distance=70,
+                           thickness=-1):
         """Project the 3D points cloud on 2D image.
 
         Args:
@@ -354,22 +356,20 @@ class GUIWindow:
         """
         img = raw_img.copy()
         num_points = points.shape[0]
-        pts_4d = np.concatenate([points[:, :3], np.ones((num_points, 1))], axis=-1)
+        pts_4d = np.concatenate(
+            [points[:, :3], np.ones((num_points, 1))], axis=-1)
         pts_2d = pts_4d @ lidar2img_rt.T
-
         # cam_points is Tensor of Nx4 whose last column is 1
         # transform camera coordinate to image coordinate
         pts_2d[:, 2] = np.clip(pts_2d[:, 2], a_min=1e-5, a_max=99999)
         pts_2d[:, 0] /= pts_2d[:, 2]
         pts_2d[:, 1] /= pts_2d[:, 2]
-
         fov_inds = ((pts_2d[:, 0] < img.shape[1])
                     & (pts_2d[:, 0] >= 0)
                     & (pts_2d[:, 1] < img.shape[0])
                     & (pts_2d[:, 1] >= 0))
 
         imgfov_pts_2d = pts_2d[fov_inds, :3]  # u, v, d
-
         cmap = plt.cm.get_cmap('hsv', 256)
         cmap = np.array([cmap(i) for i in range(256)])[:, :3] * 255
         for i in range(imgfov_pts_2d.shape[0]):
@@ -388,35 +388,34 @@ class GUIWindow:
         return img
 
     def process_img(self,
-                       index,
-                       key,
-                       #dataset,
-                       #out_dir,
-                       #filename,
-                       #show=False,
-                       #img,
-                       prepared_data,
-                       #calib,
-                       #img_metas,
-                       gt_bboxes=None,
-                       pred_bboxes=None,
-                       gt_bbox_color=(0, 255, 0),  # (61, 102, 255) is Blue
-                       pred_bbox_color=(241, 101, 72),
-                       is_nus_mono=False):
+                    index,
+                    key,
+                    # dataset,
+                    # out_dir,
+                    # filename,
+                    # show=False,
+                    # img,
+                    prepared_data,
+                    # calib,
+                    # img_metas,
+                    gt_bboxes=None,
+                    pred_bboxes=None,
+                    gt_bbox_color=(0, 255, 0),  # (61, 102, 255) is Blue
+                    pred_bbox_color=(241, 101, 72),
+                    is_nus_mono=False):
         """
         Visualize 3D bboxes on 2D image by projection.
         source: show_proj_bbox_img and show_multi_modality_result
         """
         img_metas = prepared_data['img_metas']._data
-
-        length_img_list = len(prepared_data['img']._data.numpy().shape) 
+        length_img_list = len(prepared_data['img']._data.numpy().shape)
         if length_img_list > 3:
-            img = prepared_data['img']._data.numpy()[index,:,:,:]
+            img = prepared_data['img']._data.numpy()[index, :, :, :]
         else:
             img = prepared_data['img']._data.numpy()
 
         # need to transpose channel to first dim
-        img = img.transpose(1,2,0)
+        img = img.transpose(1, 2, 0)
         img = mmcv.bgr2rgb(img)
         self.img_dict[key]['img'] = img.copy()
 
@@ -444,29 +443,28 @@ class GUIWindow:
         if gt_bboxes is not None:
             img_bbox = draw_bbox(
                 gt_bboxes, img_bbox, proj_mat, img_metas, color=gt_bbox_color, thickness=3)
-            
+
         if pred_bboxes is not None:
             img_bbox = draw_bbox(
                 pred_bboxes, img_bbox.copy(), proj_mat, img_metas, color=pred_bbox_color, thickness=1)
 
         self.img_dict[key]['bbox'] = img_bbox.copy()
 
-        ## TODO: incorporate odometry to lidar points to get their correct pose. also make the projection faster  
+        # TODO: incorporate odometry to lidar points to get their correct pose. also make the projection faster
         # self.img_dict[key]['overlay'] = self.project_pts_on_img(self.pcd.point["points"].numpy(),
         #                     img.copy(),
         #                     proj_mat,
         #                     thickness=2)
-        
-    
+
     # Update the scene. This must be done on the UI thread.
+
     def update(self):
-        # clean existing geometry 
+        # clean existing geometry
         # self.pcd_dict['LIDAR_TOP'] = prepared_data['points']._data.numpy()
         # self.widget3d.scene.remove_geometry("Stitched PC")
         self.clean_widget_3d()
-
-        # update point cloud 
-        attr = self.prepared_data['points']._data.numpy()[:,:3]
+        # update point cloud
+        attr = self.prepared_data['points']._data.numpy()[:, :3]
         self.pcd.point["points"] = self._make_tcloud_array(attr)
         # Update scalar values, source: ml3d/vis/visualizer.py
         if attr is not None:
@@ -474,7 +472,7 @@ class GUIWindow:
                 scalar = attr
             else:
                 # channel = max(0, self._colormap_channel.selected_index)
-                channel = 0     #TODO: set this from GUI
+                channel = 0  # TODO: set this from GUI
                 scalar = attr[:, channel]
         else:
             # shape = [len(tcloud.point["points"].numpy())]
@@ -485,7 +483,6 @@ class GUIWindow:
         self.pcd.point["__visualization_scalar"] = self._make_tcloud_array(
             scalar)
 
-        
         # flag |= rendering.Scene.UPDATE_UV0_FLAG
 
         # Update RGB values
@@ -506,18 +503,20 @@ class GUIWindow:
 
         for idx, key in enumerate(self.img_dict):
             self.process_img(index=idx,
-                            key=key,
-                            prepared_data=self.prepared_data,   # TODO: remove this arg
-                            gt_bboxes=self.gt_bboxes)
+                             key=key,
+                             prepared_data=self.prepared_data,   # TODO: remove this arg
+                             gt_bboxes=self.gt_bboxes)
 
             # TODO: add a button to select/deselct option of adding bbox, add as a if loop here.
             img = self.img_dict[key]['bbox'].copy()
             img = mmcv.imrescale(img, (self.img_rescaling_factor))
             # self.img_dict[key].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
-            self.img_dict[key]['widget'].update_image(o3d.geometry.Image(np.ascontiguousarray(img)))
+            self.img_dict[key]['widget'].update_image(
+                o3d.geometry.Image(np.ascontiguousarray(img)))
 
     def get_prepared_data(self, index):
-        self.prepared_data = self.dataset.prepare_train_data(index)  # this already has loaded pc and img, img_meta
+        self.prepared_data = self.dataset.prepare_train_data(
+            index)  # this already has loaded pc and img, img_meta
         self.gt_bboxes = self.dataset.get_ann_info(index)['gt_bboxes_3d']
         return True
 
@@ -525,30 +524,25 @@ class GUIWindow:
         # # This is NOT the UI thread, need to call post_to_main_thread() to update
         # # the scene or any part of the UI.
         # data_infos = self.dataset.data_infos
-        
         # for idx, data_info in enumerate(track_iter_progress(data_infos)):
-            # self.prepared_data = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
-            # self.gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
-
+        # self.prepared_data = self.dataset.prepare_train_data(idx)  # this already has loaded pc and img, img_meta
+        # self.gt_bboxes = self.dataset.get_ann_info(idx)['gt_bboxes_3d']
         while True:
             # Prepare data, passing index is symbolic
             self.get_prepared_data(self.index)
-
             self.index += 1
             if self.index >= len(self.dataset.data_infos):
-                self.is_done = True 
-            
+                self.is_done = True
             if not self.is_done:
                 gui.Application.instance.post_to_main_thread(
                     self.window, self.update)
             else:
                 gui.Application.instance.quit()
                 break
-            
             if self.pause:
                 self.event.wait()
-            
         # self.is_done = True
+
 
 def main():
     app = o3d.visualization.gui.Application.instance
