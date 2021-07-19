@@ -31,7 +31,7 @@ def create_lyft_infos(root_path,
     """
     lyft = Lyft(
         data_path=osp.join(root_path, version),
-        json_path=osp.join(root_path, version, version),
+        json_path=osp.join(root_path, version, 'data'),
         verbose=True)
     available_vers = ['v1.01-train', 'v1.01-test']
     assert version in available_vers
@@ -229,7 +229,7 @@ def export_2d_annotation(root_path, info_path, version):
     lyft_infos = mmcv.load(info_path)['infos']
     lyft = Lyft(
         data_path=osp.join(root_path, version),
-        json_path=osp.join(root_path, version, version),
+        json_path=osp.join(root_path, version, 'data'),
         verbose=True)
     # info_2d_list = []
     cat2Ids = [
