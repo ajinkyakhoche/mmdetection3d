@@ -4,8 +4,8 @@ import argparse
 from mmcv import Config, DictAction, mkdir_or_exist, track_iter_progress
 from os import path as osp
 
-# from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
-#                                DepthInstance3DBoxes, LiDARInstance3DBoxes)
+from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
+                               DepthInstance3DBoxes, LiDARInstance3DBoxes)
 from mmdet3d.core.visualizer import (show_multi_modality_result, show_result,
                                      show_seg_result, GUIWindow)
 from mmdet3d.core.visualizer import (GUIWindow)
@@ -32,11 +32,15 @@ def parse_args():
     #     type=str,
     #     choices=['det', 'seg', 'multi_modality-det', 'mono-det'],
     #     help='Determine the visualization method depending on the task.')
-    # parser.add_argument(
-    #     '--online',
-    #     action='store_true',
-    #     help='Whether to perform online visualization. Note that you often '
-    #     'need a monitor to do so.')
+    parser.add_argument(
+        '--online',
+        action='store_true',
+        help='Whether to perform online visualization. Note that you often '
+        'need a monitor to do so.')
+    parser.add_argument(
+        '--write',
+        action='store_true',
+        help='Whether to write/ save results to disk ')
     parser.add_argument(
         '--cfg-options',
         nargs='+',
@@ -74,15 +78,15 @@ def build_data_cfg(config_path, skip_type, cfg_options):
     return cfg
 
 
-# def to_depth_mode(points, bboxes):
-#     """Convert points and bboxes to Depth Coord and Depth Box mode."""
-#     if points is not None:
-#         points = Coord3DMode.convert_point(points.copy(), Coord3DMode.LIDAR,
-#                                            Coord3DMode.DEPTH)
-#     if bboxes is not None:
-#         bboxes = Box3DMode.convert(bboxes.clone(), Box3DMode.LIDAR,
-#                                    Box3DMode.DEPTH)
-#     return points, bboxes
+def to_depth_mode(points, bboxes):
+    """Convert points and bboxes to Depth Coord and Depth Box mode."""
+    if points is not None:
+        points = Coord3DMode.convert_point(points.copy(), Coord3DMode.LIDAR,
+                                           Coord3DMode.DEPTH)
+    if bboxes is not None:
+        bboxes = Box3DMode.convert(bboxes.clone(), Box3DMode.LIDAR,
+                                   Box3DMode.DEPTH)
+    return points, bboxes
 
 
 # def show_det_data(idx, dataset, out_dir, filename, show=False):
@@ -183,6 +187,31 @@ def build_data_cfg(config_path, skip_type, cfg_options):
 #             img, None, None, None, out_dir, filename, show=show)
 
 
+def prepare_data(idx, 
+                dataset, 
+                output_dir, 
+                file_name, 
+                show=True, 
+                write=False, 
+                is_nus_mono=False):
+    if is_nus_mono:
+        prepared_data = dataset.prepare_train_img(idx)    
+    else:
+        prepared_data = dataset.prepare_train_data(idx)
+    if ['points'] in prepared_data:
+        points = prepared_data['points']._data.numpy()
+    if ['img_metas', 'img'] in prepared_data :
+        img_metas = prepared_data['img_metas']._data
+        img = prepared_data['img']._data.numpy()
+    
+    if ['pts_semantic_mask'] in prepared_data:
+        gt_seg = prepared_data['pts_semantic_mask']._data.numpy()
+    
+    gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d'].tensor
+    if dataset.box_mode_3d != Box3DMode.DEPTH:
+        points, gt_bboxes = to_depth_mode(points, gt_bboxes)
+    
+
 def main():
     args = parse_args()
 
@@ -202,29 +231,36 @@ def main():
     # vis_task = args.task  # 'det', 'seg', 'multi_modality-det', 'mono-det'
 
     # # Initialize a GUI
-    app = o3d.visualization.gui.Application.instance
-    app.initialize()
-    win = GUIWindow(dataset, dataset_type, cfg._cfg_dict['point_cloud_range'])
-    app.run()
+    # app = o3d.visualization.gui.Application.instance
+    # app.initialize()
+    # win = GUIWindow(dataset, dataset_type, cfg._cfg_dict['point_cloud_range'])
+    # app.run()
 
-    # for idx, data_info in enumerate(track_iter_progress(data_infos)):
-    #     if dataset_type in ['KittiDataset', 'WaymoDataset']:
-    #         data_path = data_info['point_cloud']['velodyne_path']
-    #     elif dataset_type in [
-    #             'ScanNetDataset', 'SUNRGBDDataset', 'ScanNetSegDataset',
-    #             'S3DISSegDataset'
-    #     ]:
-    #         data_path = data_info['pts_path']
-    #     elif dataset_type in ['NuScenesDataset', 'LyftDataset']:
-    #         data_path = data_info['lidar_path']
-    #     elif dataset_type in ['NuScenesMonoDataset']:
-    #         data_path = data_info['file_name']
-    #     else:
-    #         raise NotImplementedError(
-    #             f'unsupported dataset type {dataset_type}')
+    for idx, data_info in enumerate(track_iter_progress(data_infos)):
+        if dataset_type in ['KittiDataset', 'WaymoDataset']:
+            data_path = data_info['point_cloud']['velodyne_path']
+        elif dataset_type in [
+                'ScanNetDataset', 'SUNRGBDDataset', 'ScanNetSegDataset',
+                'S3DISSegDataset'
+        ]:
+            data_path = data_info['pts_path']
+        elif dataset_type in ['NuScenesDataset', 'LyftDataset']:
+            data_path = data_info['lidar_path']
+        elif dataset_type in ['NuScenesMonoDataset']:
+            data_path = data_info['file_name']
+        else:
+            raise NotImplementedError(
+                f'unsupported dataset type {dataset_type}')
 
-    #     file_name = osp.splitext(osp.basename(data_path))[0]
+        file_name = osp.splitext(osp.basename(data_path))[0]
 
+        prepare_data(idx, 
+                    dataset, 
+                    args.output_dir, 
+                    file_name, 
+                    args.online, 
+                    args.write, 
+                    is_nus_mono=(dataset_type == 'NuScenesMonoDataset'))
     #     if vis_task in ['det', 'multi_modality-det']:
     #         # show 3D bboxes on 3D point clouds
     #         show_det_data(
