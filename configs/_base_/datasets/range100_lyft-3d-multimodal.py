@@ -1,14 +1,14 @@
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
-point_cloud_range = [-50, -50, -5, 50, 50, 3]
-# For nuScenes we usually do 10-class detection
+point_cloud_range = [-100, -100, -5, 100, 100, 3]
+# For Lyft we usually do 9-class detection
 class_names = [
-    'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
-    'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
+    'car', 'truck', 'bus', 'emergency_vehicle', 'other_vehicle', 'motorcycle',
+    'bicycle', 'pedestrian', 'animal'
 ]
-dataset_type = 'NuScenesDataset'
-data_root = 'data/nuscenes/'
-# Input modality for nuScenes dataset, this is consistent with the submission
+dataset_type = 'LyftDataset'
+data_root = 'data/lyft/'
+# Input modality for Lyft dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
@@ -23,12 +23,10 @@ file_client_args = dict(backend='disk')
 # file_client_args = dict(
 #     backend='petrel',
 #     path_mapping=dict({
-#         './data/nuscenes/': 's3://nuscenes/nuscenes/',
-#         'data/nuscenes/': 's3://nuscenes/nuscenes/'
-#     }))
+#         './data/lyft/': 's3://lyft/lyft/',
+#         'data/lyft/': 's3://lyft/lyft/'
+#    }))
 train_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles'),
-    # TODO: enter augmentations ops for images (from mmdet project?)
     dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -48,7 +46,6 @@ train_pipeline = [
     dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectNameFilter', classes=class_names),
     dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
@@ -99,7 +96,6 @@ eval_pipeline = [
         type='LoadPointsFromMultiSweeps',
         sweeps_num=10,
         file_client_args=file_client_args),
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(
         type='DefaultFormatBundle3D',
         class_names=class_names,
@@ -108,38 +104,33 @@ eval_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
+    samples_per_gpu=2,
+    workers_per_gpu=2,
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_train.pkl',
+        ann_file=data_root + 'lyft_infos_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
-        test_mode=False,
-        # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
-        # and box_type_3d='Depth' in sunrgbd and scannet dataset.
-        box_type_3d='LiDAR'),
+        test_mode=False),
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_val.pkl',
+        ann_file=data_root + 'lyft_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
-        test_mode=True,
-        box_type_3d='LiDAR'),
+        test_mode=True),
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_val.pkl',
+        ann_file=data_root + 'lyft_infos_test.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
-        test_mode=True,
-        box_type_3d='LiDAR'))
-# For nuScenes dataset, we usually evaluate the model at the end of training.
+        test_mode=True))
+# For Lyft dataset, we usually evaluate the model at the end of training.
 # Since the models are trained by 24 epochs by default, we set evaluation
 # interval to be 24. Please change the interval accordingly if you do not
 # use a default schedule.
