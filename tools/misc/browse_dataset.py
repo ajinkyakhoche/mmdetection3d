@@ -7,10 +7,9 @@ from os import path as osp
 from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
                                DepthInstance3DBoxes, LiDARInstance3DBoxes)
 from mmdet3d.core.visualizer import (show_multi_modality_result, show_result,
-                                     show_seg_result, GUIWindow)
+                                     show_seg_result)
 from mmdet3d.datasets import build_dataset
 
-import open3d as o3d 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Browse a dataset')
@@ -199,12 +198,6 @@ def main():
 
     # configure visualization mode
     vis_task = args.task  # 'det', 'seg', 'multi_modality-det', 'mono-det'
-
-    # # Initialize a GUI
-    app = o3d.visualization.gui.Application.instance
-    app.initialize()
-    win = GUIWindow(dataset, dataset_type, cfg._cfg_dict['point_cloud_range'])
-    app.run()
 
     for idx, data_info in enumerate(track_iter_progress(data_infos)):
         if dataset_type in ['KittiDataset', 'WaymoDataset']:
