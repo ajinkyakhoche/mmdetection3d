@@ -12,7 +12,7 @@ data_root = 'data/lyft/'
 # format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
-    use_camera=False,
+    use_camera=True,
     use_radar=False,
     use_map=False,
     use_external=False)
@@ -85,6 +85,7 @@ test_pipeline = [
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
 eval_pipeline = [
+    dict(type='LoadMultiViewImageFromFiles'),
     dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -99,7 +100,7 @@ eval_pipeline = [
         type='DefaultFormatBundle3D',
         class_names=class_names,
         with_label=False),
-    dict(type='Collect3D', keys=['points'])
+    dict(type='Collect3D', keys=['points', 'img', 'sweeps'])
 ]
 
 data = dict(

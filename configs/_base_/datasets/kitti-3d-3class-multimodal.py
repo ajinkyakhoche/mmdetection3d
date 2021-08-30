@@ -3,7 +3,7 @@ dataset_type = 'KittiDataset'
 data_root = 'data/kitti/'
 class_names = ['Pedestrian', 'Cyclist', 'Car']
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
-input_modality = dict(use_lidar=True, use_camera=False)
+input_modality = dict(use_lidar=True, use_camera=True)
 db_sampler = dict(
     data_root=data_root,
     info_path=data_root + 'kitti_dbinfos_train.pkl',
@@ -82,6 +82,7 @@ test_pipeline = [
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
 eval_pipeline = [
+    dict(type='LoadImageFromFile'),
     dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -92,7 +93,7 @@ eval_pipeline = [
         type='DefaultFormatBundle3D',
         class_names=class_names,
         with_label=False),
-    dict(type='Collect3D', keys=['points'])
+    dict(type='Collect3D', keys=['points', 'img', 'sweeps'])
 ]
 
 data = dict(

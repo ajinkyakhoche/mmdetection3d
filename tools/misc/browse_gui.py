@@ -1,14 +1,20 @@
 import argparse
+from cv2 import data
 import numpy as np
 import warnings
 from mmcv import Config, DictAction, mkdir_or_exist, track_iter_progress
+import mmcv
 from os import path as osp
+
+from open3d.visualization import gui
 
 from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
                                DepthInstance3DBoxes, LiDARInstance3DBoxes)
 from mmdet3d.core.visualizer import (show_multi_modality_result, show_result,
-                                     show_seg_result)
+                                     show_seg_result, GUIWindow)
 from mmdet3d.datasets import build_dataset
+import copy
+from tqdm import tqdm
 
 
 def parse_args():
@@ -25,16 +31,20 @@ def parse_args():
         default=None,
         type=str,
         help='If there is no display interface, you can save it')
+    # parser.add_argument(
+    #     '--task',
+    #     type=str,
+    #     choices=['det', 'seg', 'multi_modality-det', 'mono-det'],
+    #     help='Determine the visualization method depending on the task.')
+    # parser.add_argument(
+    #     '--online',
+    #     action='store_true',
+    #     help='Whether to perform online visualization. Note that you often '
+    #     'need a monitor to do so.')
     parser.add_argument(
-        '--task',
-        type=str,
-        choices=['det', 'seg', 'multi_modality-det', 'mono-det'],
-        help='Determine the visualization method depending on the task.')
-    parser.add_argument(
-        '--online',
+        '--write',
         action='store_true',
-        help='Whether to perform online visualization. Note that you often '
-        'need a monitor to do so.')
+        help='Whether to write/ store data to disk ')
     parser.add_argument(
         '--cfg-options',
         nargs='+',
@@ -83,61 +93,75 @@ def to_depth_mode(points, bboxes):
     return points, bboxes
 
 
-def show_det_data(idx, dataset, out_dir, filename, show=False):
-    """Visualize 3D point cloud and 3D bboxes."""
-    example = dataset.prepare_train_data(idx)
-    points = example['points']._data.numpy()
-    gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d'].tensor
-    if dataset.box_mode_3d != Box3DMode.DEPTH:
-        points, gt_bboxes = to_depth_mode(points, gt_bboxes)
-    show_result(
-        points,
-        gt_bboxes.clone(),
-        None,
-        out_dir,
-        filename,
-        show=show,
-        snapshot=True)
+# def show_det_data(idx,
+#     dataset,
+#     out_dir,
+#     filename,
+#     points,
+#     bboxes,
+#     box_mode_3d=None,
+#     show=False,
+#         write=False):
+#     """Visualize 3D point cloud and 3D bboxes."""
+#     example = dataset.prepare_train_data(idx)
+#     points = example['points']._data.numpy()
+#     gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d'].tensor
+#     if dataset.box_mode_3d != Box3DMode.DEPTH:
+#     if box_mode_3d != Box3DMode.DEPTH:
+#         points, bboxes_tensor = to_depth_mode(points, bboxes.tensor)
+#     show_result(
+#         None,
+#         bboxes_tensor.clone(),
+#         None,
+#         out_dir,
+#         filename,
+#         show=show,
+#         write=write,
+#         snapshot=True)
 
 
-def show_seg_data(idx, dataset, out_dir, filename, show=False):
-    """Visualize 3D point cloud and segmentation mask."""
-    example = dataset.prepare_train_data(idx)
-    points = example['points']._data.numpy()
-    gt_seg = example['pts_semantic_mask']._data.numpy()
-    show_seg_result(
-        points,
-        gt_seg.copy(),
-        None,
-        out_dir,
-        filename,
-        np.array(dataset.PALETTE),
-        dataset.ignore_index,
-        show=show,
-        snapshot=True)
+# def show_seg_data(idx, dataset, out_dir, filename, show=False):
+#     """Visualize 3D point cloud and segmentation mask."""
+#     example = dataset.prepare_train_data(idx)
+#     points = example['points']._data.numpy()
+#     gt_seg = example['pts_semantic_mask']._data.numpy()
+#     show_seg_result(
+#         points,
+#         gt_seg.copy(),
+#         None,
+#         out_dir,
+#         filename,
+#         np.array(dataset.PALETTE),
+#         dataset.ignore_index,
+#         show=show,
+#         snapshot=True)
 
 
-def show_proj_bbox_img(idx,
-                       dataset,
-                       out_dir,
-                       filename,
-                       show=False,
-                       is_nus_mono=False):
+def show_proj_bbox_img(  # idx,
+    # dataset,
+    img,
+    img_metas,
+    gt_bboxes,
+    out_dir,
+    filename,
+    show=False,
+    write=False,
+        is_nus_mono=False):
     """Visualize 3D bboxes on 2D image by projection."""
-    try:
-        example = dataset.prepare_train_data(idx)
-    except AttributeError:  # for Mono-3D datasets
-        example = dataset.prepare_train_img(idx)
-    gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d']
-    img_metas = example['img_metas']._data
-    img = example['img']._data.numpy()
-    # need to transpose channel to first dim
-    img = img.transpose(1, 2, 0)
-    # no 3D gt bboxes, just show img
-    if gt_bboxes.tensor.shape[0] == 0:
-        gt_bboxes = None
+    # try:
+    #     example = dataset.prepare_train_data(idx)
+    # except AttributeError:  # for Mono-3D datasets
+    #     example = dataset.prepare_train_img(idx)
+    # gt_bboxes = dataset.get_ann_info(idx)['gt_bboxes_3d']
+    # img_metas = example['img_metas']._data
+    # img = example['img']._data.numpy()
+    # # need to transpose channel to first dim
+    # img = img.transpose(1, 2, 0)
+    # # no 3D gt bboxes, just show img
+    # if gt_bboxes.tensor.shape[0] == 0:
+    #     gt_bboxes = None
     if isinstance(gt_bboxes, DepthInstance3DBoxes):
-        show_multi_modality_result(
+        return show_multi_modality_result(
             img,
             gt_bboxes,
             None,
@@ -146,9 +170,10 @@ def show_proj_bbox_img(idx,
             filename,
             box_mode='depth',
             img_metas=img_metas,
-            show=show)
+            show=show,
+            write=write)
     elif isinstance(gt_bboxes, LiDARInstance3DBoxes):
-        show_multi_modality_result(
+        return show_multi_modality_result(
             img,
             gt_bboxes,
             None,
@@ -157,13 +182,14 @@ def show_proj_bbox_img(idx,
             filename,
             box_mode='lidar',
             img_metas=img_metas,
-            show=show)
+            show=show,
+            write=write)
     elif isinstance(gt_bboxes, CameraInstance3DBoxes):
         # TODO: remove the hack of box from NuScenesMonoDataset
         if is_nus_mono:
             from mmdet3d.core.bbox import mono_cam_box2vis
             gt_bboxes = mono_cam_box2vis(gt_bboxes)
-        show_multi_modality_result(
+        return show_multi_modality_result(
             img,
             gt_bboxes,
             None,
@@ -172,13 +198,107 @@ def show_proj_bbox_img(idx,
             filename,
             box_mode='camera',
             img_metas=img_metas,
-            show=show)
+            show=show,
+            write=write)
     else:
         # can't project, just show img
         warnings.warn(
             f'unrecognized gt box type {type(gt_bboxes)}, only show image')
-        show_multi_modality_result(
-            img, None, None, None, out_dir, filename, show=show)
+        return show_multi_modality_result(
+            img, None, None, None, out_dir, filename, show=show, write=write)
+
+
+def get_filename(dataset_type, data_info):
+    if dataset_type in ['KittiDataset', 'WaymoDataset']:
+        data_path = data_info['point_cloud']['velodyne_path']
+    elif dataset_type in [
+            'ScanNetDataset', 'SUNRGBDDataset', 'ScanNetSegDataset',
+            'S3DISSegDataset'
+    ]:
+        data_path = data_info['pts_path']
+    elif dataset_type in ['NuScenesDataset', 'LyftDataset']:
+        data_path = data_info['lidar_path']
+    elif dataset_type in ['NuScenesMonoDataset']:
+        data_path = data_info['file_name']
+    else:
+        raise NotImplementedError(
+            f'unsupported dataset type {dataset_type}')
+
+    file_name = osp.splitext(osp.basename(data_path))[0]
+    return file_name
+
+
+def prepare_data(idx,
+             dataset,
+             gui_win,
+             out_dir,
+             file_name,
+             show=False,
+             write=False,
+             is_nus_mono=False):
+    if is_nus_mono:
+        prepared_data = dataset.prepare_train_img(idx)
+    else:
+        prepared_data = dataset.prepare_train_data(idx)
+
+    if 'points' in prepared_data:
+        points = prepared_data['points']._data.numpy()[:, :3]
+        gui_win.update_pcd(points)
+    if 'pts_semantic_mask' in prepared_data:
+        gt_seg = prepared_data['pts_semantic_mask']._data.numpy()
+
+    ann_info = dataset.get_ann_info(idx)
+    if 'gt_bboxes_3d' in ann_info:
+        gt_bboxes_3d = ann_info['gt_bboxes_3d']  # .tensor
+
+        bboxes_tensor = gt_bboxes_3d.tensor
+        gt_bboxes_3d_line_set, _ = show_result(
+            None,
+            bboxes_tensor.clone(),
+            None,
+            out_dir,
+            file_name,
+            show=show,
+            write=write,
+            snapshot=True)
+        gui_win.update_bbox_3d(
+            gt=gt_bboxes_3d_line_set,
+            pred=[])
+
+    if 'img_metas' in prepared_data and 'img' in prepared_data:
+        img_metas = prepared_data['img_metas']._data
+        for index, cam_name in enumerate(gui_win.cam_names):
+            length_img_list = len(
+                prepared_data['img']._data.numpy().shape)
+            if length_img_list > 3:
+                img = prepared_data['img']._data.numpy()[
+                    index, :, :, :]
+                img_meta = copy.deepcopy(img_metas)
+                for key, value in img_metas.items():
+                    if isinstance(img_metas[key], list):
+                        img_meta[key] = img_metas[key][index]
+                img_meta['ori_shape'] = img_meta['pad_shape'] = img_meta['img_shape'] = img.shape
+
+            else:
+                img = prepared_data['img']._data.numpy()
+            # need to transpose channel to first dim
+            img = img.transpose(1, 2, 0)
+            img = mmcv.bgr2rgb(img)
+            # get projection of 3d bounding boxes
+            img_bbox_3d = show_proj_bbox_img(  # idx,
+                # dataset,
+                img.copy(),
+                img_meta,
+                gt_bboxes_3d,
+                out_dir,
+                file_name,
+                show=show,
+                write=write,
+                is_nus_mono=is_nus_mono)
+            gui_win.update_img(
+                cam_name,
+                img.copy(),
+                img_bbox_3d.copy())
 
 
 def main():
@@ -195,45 +315,67 @@ def main():
         dataset = build_dataset(cfg.data.train)
     data_infos = dataset.data_infos
     dataset_type = cfg.dataset_type
+    out_dir = args.output_dir
+    is_nus_mono = (dataset_type == 'NuScenesMonoDataset')
+    # # configure visualization mode
+    # vis_task = args.task  # 'det', 'seg', 'multi_modality-det', 'mono-det'
 
-    # configure visualization mode
-    vis_task = args.task  # 'det', 'seg', 'multi_modality-det', 'mono-det'
+    gui_win = GUIWindow(dataset_type,                   # for setting dataset specific prop
+                        dataset.modality,
+                        cfg._cfg_dict['point_cloud_range'])     # for setting bounds of gui window
 
-    for idx, data_info in enumerate(track_iter_progress(data_infos)):
-        if dataset_type in ['KittiDataset', 'WaymoDataset']:
-            data_path = data_info['point_cloud']['velodyne_path']
-        elif dataset_type in [
-                'ScanNetDataset', 'SUNRGBDDataset', 'ScanNetSegDataset',
-                'S3DISSegDataset'
-        ]:
-            data_path = data_info['pts_path']
-        elif dataset_type in ['NuScenesDataset', 'LyftDataset']:
-            data_path = data_info['lidar_path']
-        elif dataset_type in ['NuScenesMonoDataset']:
-            data_path = data_info['file_name']
-        else:
-            raise NotImplementedError(
-                f'unsupported dataset type {dataset_type}')
+    # for idx, data_info in enumerate(track_iter_progress(data_infos)):
+    idx = 0
+    with tqdm(total=len(data_infos)) as pbar:
+        while True:
+            # if vis_task in ['det', 'multi_modality-det']:
+            #     # show 3D bboxes on 3D point clouds
+            #     show_det_data(
+            #         idx, dataset, args.output_dir, file_name, show=args.online)
+            # if vis_task in ['multi_modality-det', 'mono-det']:
+            #     # project 3D bboxes to 2D image
+            #     show_proj_bbox_img(
+            #         idx,
+            #         dataset,
+            #         args.output_dir,
+            #         file_name,
+            #         show=args.online,
+            #         is_nus_mono=(dataset_type == 'NuScenesMonoDataset'))
+            # elif vis_task in ['seg']:
+            #     # show 3D segmentation mask on 3D point clouds
+            #     show_seg_data(
+            #         idx, dataset, args.output_dir, file_name, show=args.online)
 
-        file_name = osp.splitext(osp.basename(data_path))[0]
+            gui_win.index = idx
+            if gui_win.index >= len(data_infos):
+                gui_win.is_done = True
 
-        if vis_task in ['det', 'multi_modality-det']:
-            # show 3D bboxes on 3D point clouds
-            show_det_data(
-                idx, dataset, args.output_dir, file_name, show=args.online)
-        if vis_task in ['multi_modality-det', 'mono-det']:
-            # project 3D bboxes to 2D image
-            show_proj_bbox_img(
-                idx,
+            data_info = data_infos[idx]
+            file_name = get_filename(
+                dataset_type=dataset_type,
+                data_info=data_info
+            )
+
+            prepare_data(idx,
                 dataset,
+                gui_win,
                 args.output_dir,
                 file_name,
-                show=args.online,
-                is_nus_mono=(dataset_type == 'NuScenesMonoDataset'))
-        elif vis_task in ['seg']:
-            # show 3D segmentation mask on 3D point clouds
-            show_seg_data(
-                idx, dataset, args.output_dir, file_name, show=args.online)
+                False,
+                args.write,
+                is_nus_mono)
+
+            idx += 1
+            pbar.update(1)
+            if not gui_win.is_done:
+                # gui.Application.instance.run_in_thread(gui_win.update_gui)
+                gui.Application.instance.post_to_main_thread(
+                    gui_win.window, gui_win.update_gui)
+            else:
+                #gui.Application.instance.quit()
+                break
+            if gui_win.pause:
+                gui_win.event.wait()
 
 
 if __name__ == '__main__':

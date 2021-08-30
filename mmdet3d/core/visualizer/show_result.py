@@ -5,7 +5,13 @@ from os import path as osp
 
 from .image_vis import (draw_camera_bbox3d_on_img, draw_depth_bbox3d_on_img,
                         draw_lidar_bbox3d_on_img)
-
+import torch
+try:
+    import open3d as o3d
+    from open3d import geometry
+except ImportError:
+    raise ImportError(
+        'Please run "pip install open3d" to install open3d first.')
 
 def _write_obj(points, out_filename):
     """Write points into ``obj`` format for meshlab visualization.
@@ -71,12 +77,80 @@ def _write_oriented_bbox(scene_bbox, out_filename):
     return
 
 
+def _draw_bboxes(bbox3d,
+                 #vis,
+                 #points_colors,
+                 #pcd=None,
+                 bbox_color=(0, 1.0, 0),
+                 #points_in_box_color=(1, 0, 0),
+                 rot_axis=2,
+                 center_mode='lidar_bottom',
+                 mode='xyz'):
+    """Draw bbox on visualizer and change the color of points inside bbox3d.
+
+    Args:
+        bbox3d (numpy.array | torch.tensor, shape=[M, 7]):
+            3d bbox (x, y, z, dx, dy, dz, yaw) to visualize.
+        vis (:obj:`open3d.visualization.Visualizer`): open3d visualizer.
+        points_colors (numpy.array): color of each points.
+        pcd (:obj:`open3d.geometry.PointCloud`): point cloud. Default: None.
+        bbox_color (tuple[float]): the color of bbox. Default: (0, 1, 0).
+        points_in_box_color (tuple[float]):
+            the color of points inside bbox3d. Default: (1, 0, 0).
+        rot_axis (int): rotation axis of bbox. Default: 2.
+        center_mode (bool): indicate the center of bbox is bottom center
+            or gravity center. avaliable mode
+            ['lidar_bottom', 'camera_bottom']. Default: 'lidar_bottom'.
+        mode (str):  indicate type of the input points, avaliable mode
+            ['xyz', 'xyzrgb']. Default: 'xyz'.
+    """
+    if isinstance(bbox3d, torch.Tensor):
+        bbox3d = bbox3d.cpu().numpy()
+    bbox3d = bbox3d.copy()
+
+    line_set_list = []
+
+    # in_box_color = np.array(points_in_box_color)
+    for i in range(len(bbox3d)):
+        center = bbox3d[i, 0:3]
+        dim = bbox3d[i, 3:6]
+        yaw = np.zeros(3)
+        yaw[rot_axis] = -bbox3d[i, 6]
+        rot_mat = geometry.get_rotation_matrix_from_xyz(yaw)
+
+        if center_mode == 'lidar_bottom':
+            center[rot_axis] += dim[
+                rot_axis] / 2  # bottom center to gravity center
+        elif center_mode == 'camera_bottom':
+            center[rot_axis] -= dim[
+                rot_axis] / 2  # bottom center to gravity center
+        box3d = geometry.OrientedBoundingBox(center, rot_mat, dim)
+
+        line_set = geometry.LineSet.create_from_oriented_bounding_box(box3d)
+        line_set.paint_uniform_color(bbox_color)
+        line_set_list.append(line_set)
+    #     # draw bboxes on visualizer
+    #     vis.add_geometry(line_set)
+
+    #     # change the color of points which are in box
+    #     if pcd is not None and mode == 'xyz':
+    #         indices = box3d.get_point_indices_within_bounding_box(pcd.points)
+    #         points_colors[indices] = in_box_color
+
+    # # update points colors
+    # if pcd is not None:
+    #     pcd.colors = o3d.utility.Vector3dVector(points_colors)
+    #     vis.update_geometry(pcd)
+    return line_set_list
+
+
 def show_result(points,
                 gt_bboxes,
                 pred_bboxes,
                 out_dir,
                 filename,
                 show=True,
+                write=False,
                 snapshot=False):
     """Convert results into format that is directly readable for meshlab.
 
@@ -92,6 +166,25 @@ def show_result(points,
     result_path = osp.join(out_dir, filename)
     mmcv.mkdir_or_exist(result_path)
 
+    gt_bboxes_o3d = pred_bboxes_o3d = None
+    if gt_bboxes is not None:
+        gt_bboxes_o3d =_draw_bboxes(
+                            gt_bboxes,
+                            #self.o3d_visualizer,
+                            #self.points_colors,
+                            #self.pcd,
+                            bbox_color=(0, 1.0, 0),
+                            #points_in_box_color,
+                            )
+    if pred_bboxes is not None:
+        pred_bboxes_o3d =_draw_bboxes(
+                            pred_bboxes,
+                            #self.o3d_visualizer,
+                            #self.points_colors,
+                            #self.pcd,
+                            bbox_color=(1.0, 0, 0),
+                            #points_in_box_color,
+                            )
     if show:
         from .open3d_vis import Visualizer
 
@@ -104,25 +197,27 @@ def show_result(points,
                              f'{filename}_online.png') if snapshot else None
         vis.show(show_path)
 
-    if points is not None:
-        _write_obj(points, osp.join(result_path, f'{filename}_points.obj'))
+    if write:
+        if points is not None:
+            _write_obj(points, osp.join(result_path, f'{filename}_points.obj'))
 
-    if gt_bboxes is not None:
-        # bottom center to gravity center
-        gt_bboxes[..., 2] += gt_bboxes[..., 5] / 2
-        # the positive direction for yaw in meshlab is clockwise
-        gt_bboxes[:, 6] *= -1
-        _write_oriented_bbox(gt_bboxes,
-                             osp.join(result_path, f'{filename}_gt.obj'))
+        if gt_bboxes is not None:
+            # bottom center to gravity center
+            gt_bboxes[..., 2] += gt_bboxes[..., 5] / 2
+            # the positive direction for yaw in meshlab is clockwise
+            gt_bboxes[:, 6] *= -1
+            _write_oriented_bbox(gt_bboxes,
+                                osp.join(result_path, f'{filename}_gt.obj'))
 
-    if pred_bboxes is not None:
-        # bottom center to gravity center
-        pred_bboxes[..., 2] += pred_bboxes[..., 5] / 2
-        # the positive direction for yaw in meshlab is clockwise
-        pred_bboxes[:, 6] *= -1
-        _write_oriented_bbox(pred_bboxes,
-                             osp.join(result_path, f'{filename}_pred.obj'))
+        if pred_bboxes is not None:
+            # bottom center to gravity center
+            pred_bboxes[..., 2] += pred_bboxes[..., 5] / 2
+            # the positive direction for yaw in meshlab is clockwise
+            pred_bboxes[:, 6] *= -1
+            _write_oriented_bbox(pred_bboxes,
+                                osp.join(result_path, f'{filename}_pred.obj'))
 
+    return gt_bboxes_o3d, pred_bboxes_o3d
 
 def show_seg_result(points,
                     gt_seg,
@@ -206,7 +301,8 @@ def show_multi_modality_result(img,
                                box_mode,
                                img_metas=None,
                                show=False,
-                               gt_bbox_color=(61, 102, 255),
+                               write=False,
+                               gt_bbox_color=(0, 255, 0),  # (61, 102, 255), is Blue
                                pred_bbox_color=(241, 101, 72)):
     """Convert multi-modality detection results into 2D results.
 
@@ -241,29 +337,32 @@ def show_multi_modality_result(img,
     result_path = osp.join(out_dir, filename)
     mmcv.mkdir_or_exist(result_path)
 
+    show_img = img.copy()
+    if gt_bboxes is not None:
+        show_img = draw_bbox(
+            gt_bboxes, show_img, proj_mat, img_metas, color=gt_bbox_color)
+    if pred_bboxes is not None:
+        show_img = draw_bbox(
+            pred_bboxes,
+            show_img,
+            proj_mat,
+            img_metas,
+            color=pred_bbox_color)
     if show:
-        show_img = img.copy()
-        if gt_bboxes is not None:
-            show_img = draw_bbox(
-                gt_bboxes, show_img, proj_mat, img_metas, color=gt_bbox_color)
-        if pred_bboxes is not None:
-            show_img = draw_bbox(
-                pred_bboxes,
-                show_img,
-                proj_mat,
-                img_metas,
-                color=pred_bbox_color)
         mmcv.imshow(show_img, win_name='project_bbox3d_img', wait_time=0)
 
-    if img is not None:
-        mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
+    if write:
+        if img is not None:
+            mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
 
-    if gt_bboxes is not None:
-        gt_img = draw_bbox(
-            gt_bboxes, img, proj_mat, img_metas, color=gt_bbox_color)
-        mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
+        if gt_bboxes is not None:
+            gt_img = draw_bbox(
+                gt_bboxes, img, proj_mat, img_metas, color=gt_bbox_color)
+            mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
 
-    if pred_bboxes is not None:
-        pred_img = draw_bbox(
-            pred_bboxes, img, proj_mat, img_metas, color=pred_bbox_color)
-        mmcv.imwrite(pred_img, osp.join(result_path, f'{filename}_pred.png'))
+        if pred_bboxes is not None:
+            pred_img = draw_bbox(
+                pred_bboxes, img, proj_mat, img_metas, color=pred_bbox_color)
+            mmcv.imwrite(pred_img, osp.join(result_path, f'{filename}_pred.png'))
+
+    return show_img
