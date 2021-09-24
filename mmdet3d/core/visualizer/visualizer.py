@@ -267,21 +267,22 @@ class DatasetModel(Model):
 
     def __init__(self, dataset, split, indices):
         super().__init__()
-        self._dataset = None
+        self._dataset = dataset
         self._name2datasetidx = {}
         self._memory_limit = 8192 * 1024 * 1024  # memory limit in bytes
         self._current_memory_usage = 0
         self._cached_data = deque()
 
-        self._dataset = dataset.get_split(split)
+        self._infos = dataset.data_infos
+
         if len(self._dataset) > 0:
             if indices is None:
-                indices = range(0, len(self._dataset))
+                indices = range(0, len(self._infos))
             # Some results from get_split() (like "training") are randomized.
             # Sort, so that the same index always returns the same piece of data.
             path2idx = {}
-            for i in range(0, len(self._dataset.path_list)):
-                path2idx[self._dataset.path_list[i]] = i
+            for i in range(0, len(self._infos)):
+                path2idx[self._infos[i]['lidar_path']] = i
             real_indices = [path2idx[p] for p in sorted(path2idx.keys())]
             indices = [real_indices[idx] for idx in indices]
 
@@ -295,8 +296,7 @@ class DatasetModel(Model):
                 underscore_to_slash = True
 
             for i in indices:
-                info = self._dataset.get_attr(i)
-                name = info["name"]
+                name = self._infos[i]['lidar_path'].split('/')[-1].split('.')[0]
                 if underscore_to_slash:
                     name = name.replace("_", "/")
                 while name in self._data:  # ensure each name is unique
