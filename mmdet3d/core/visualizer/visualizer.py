@@ -1692,13 +1692,13 @@ class Visualizer:
         """
         # Setup the labels
         lut = LabelLUT()
-        for val in sorted(dataset.label_to_names.values()):
+        for val in sorted(dataset.cat2id.keys()):
             lut.add_label(val, val)
         self.set_lut("labels", lut)
 
         self._consolidate_bounding_boxes = True
         self._init_dataset(dataset, split, indices)
-        self._visualize("Open3D - " + dataset.name, width, height)
+        self._visualize("Open3D - " + dataset.__class__.__name__, width, height)
 
     def visualize(self,
                   data,
