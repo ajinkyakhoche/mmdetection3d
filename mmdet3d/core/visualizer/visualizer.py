@@ -330,15 +330,39 @@ class DatasetModel(Model):
             return True
 
         idx = self._name2datasetidx[name]
-        data = self._dataset.get_data(idx)
+        prepared_data = self._dataset.prepare_train_data(idx)
+        
+        data = dict()
         data["name"] = name
-        data["points"] = data["point"]
+        data["points"] = prepared_data['points']._data.numpy()
 
         self.create_point_cloud(data)
 
-        if 'bounding_boxes' in data:
+        # TODO: check if ann_info contains bounding box
+        # TODO: move conversion to o3d bbox to another function
+        ann_info = self._dataset.get_ann_info(idx)
+        bbox_list = []
+
+        yaw = ann_info['gt_bboxes_3d'].yaw.numpy().tolist()
+        yaw = [y - np.pi for y in yaw]
+        # https://github.com/isl-org/Open3D-ML/blob/master/ml3d/datasets/nuscenes.py#L133 
+        yaw = [y - np.floor(y / (2 * np.pi) + 0.5) * 2 * np.pi for y in yaw]
+        # https://github.com/isl-org/Open3D-ML/blob/master/ml3d/datasets/utils/bev_box.py#L48
+        center = ann_info['gt_bboxes_3d'].center.numpy().tolist()
+        box_size = ann_info['gt_bboxes_3d'].dims.numpy().tolist()
+        box_size = [[b[0], b[2], b[1]] for b in box_size]
+        center = [[c[0], c[1], c[2]+b[1]/2] for (c,b) in zip(center, box_size)]
+        label_class = ann_info['gt_names'].tolist()
+        # x-axis
+        left = [[np.cos(y), -np.sin(y), 0] for y in yaw]
+        # y-axis
+        front = [[np.sin(y), np.cos(y), 0] for y in yaw]
+        # z-axis
+        up = [[0, 0, 1] for i in range(len(yaw))]
+        bbox_list = [BoundingBox3D(center[j], front[j], up[j], left[j], box_size[j], label_class[j], -1.0) for j in range(len(yaw))]
+        
             self.bounding_box_data.append(
-                Model.BoundingBoxData(name, data['bounding_boxes']))
+                Model.BoundingBoxData(name, bbox_list))
 
             if 'cams' in data:
                 for _, val in data['cams'].items():
