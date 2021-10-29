@@ -207,7 +207,8 @@ def show_multi_modality_result(img,
                                box_mode='lidar',
                                img_metas=None,
                                show=True,
-                               gt_bbox_color=(61, 102, 255),
+                               write=True,
+                               gt_bbox_color=(0, 255, 0),
                                pred_bbox_color=(241, 101, 72)):
     """Convert multi-modality detection results into 2D results.
 
@@ -239,32 +240,35 @@ def show_multi_modality_result(img,
     else:
         raise NotImplementedError(f'unsupported box mode {box_mode}')
 
-    result_path = osp.join(out_dir, filename)
-    mmcv.mkdir_or_exist(result_path)
-
+    show_img = img.copy()
+    if gt_bboxes is not None:
+        show_img = draw_bbox(
+            gt_bboxes, show_img, proj_mat, img_metas, color=gt_bbox_color)
+    if pred_bboxes is not None:
+        show_img = draw_bbox(
+            pred_bboxes,
+            show_img,
+            proj_mat,
+            img_metas,
+            color=pred_bbox_color)
+    
     if show:
-        show_img = img.copy()
-        if gt_bboxes is not None:
-            show_img = draw_bbox(
-                gt_bboxes, show_img, proj_mat, img_metas, color=gt_bbox_color)
-        if pred_bboxes is not None:
-            show_img = draw_bbox(
-                pred_bboxes,
-                show_img,
-                proj_mat,
-                img_metas,
-                color=pred_bbox_color)
         mmcv.imshow(show_img, win_name='project_bbox3d_img', wait_time=0)
 
-    if img is not None:
-        mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
+    if write:
+        result_path = osp.join(out_dir, filename)
+        mmcv.mkdir_or_exist(result_path)
 
-    if gt_bboxes is not None:
-        gt_img = draw_bbox(
-            gt_bboxes, img, proj_mat, img_metas, color=gt_bbox_color)
-        mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
+        if img is not None:
+            mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
 
-    if pred_bboxes is not None:
-        pred_img = draw_bbox(
-            pred_bboxes, img, proj_mat, img_metas, color=pred_bbox_color)
-        mmcv.imwrite(pred_img, osp.join(result_path, f'{filename}_pred.png'))
+        if gt_bboxes is not None:
+            gt_img = draw_bbox(
+                gt_bboxes, img, proj_mat, img_metas, color=gt_bbox_color)
+            mmcv.imwrite(gt_img, osp.join(result_path, f'{filename}_gt.png'))
+
+        if pred_bboxes is not None:
+            pred_img = draw_bbox(
+                pred_bboxes, img, proj_mat, img_metas, color=pred_bbox_color)
+            mmcv.imwrite(pred_img, osp.join(result_path, f'{filename}_pred.png'))
+    return show_img

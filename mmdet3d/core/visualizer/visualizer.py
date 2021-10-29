@@ -1,4 +1,5 @@
 import math
+from mmdet3d.core.visualizer.show_result import show_multi_modality_result
 import numpy as np
 import threading
 import open3d as o3d
@@ -10,7 +11,7 @@ from .colormap import *
 from .labellut import *
 
 import time
-
+import mmcv
 
 class Model:
     """The class that helps build visualization models based on attributes,
@@ -255,6 +256,9 @@ class DataModel(Model):
             return True
 
         self.create_point_cloud(self._name2srcdata[name])
+        #TODO: load images for DataModel!
+        self.create_cams(self._name2srcdata[name]['name'], self._name2srcdata[name]['cams'], update=True)
+        
         return True
 
     def unload(self, name):
@@ -275,11 +279,17 @@ class DatasetModel(Model):
         super().__init__()
         self._dataset = dataset
         self._name2datasetidx = {}
-        self._memory_limit = 8192 * 1024 * 1024  # memory limit in bytes
+        self._memory_limit = 24 * 1024 * 1024 * 1024  # memory limit in bytes
         self._current_memory_usage = 0
         self._cached_data = deque()
 
         self._infos = dataset.data_infos
+        self._modality = dataset.modality
+
+        # initialize vars acc to modality. 
+        if 'use_camera' in self._modality:
+            self._cam_names = list(self._infos[0]['cams'].keys())
+        # TODO: how to handle image only methods?
 
         if len(self._dataset) > 0:
             if indices is None:
@@ -367,18 +377,31 @@ class DatasetModel(Model):
         up = [[0, 0, 1] for i in range(len(yaw))]
         bbox_list = [BoundingBox3D(center[j], front[j], up[j], left[j], box_size[j], label_class[j], -1.0) for j in range(len(yaw))]
         
-            self.bounding_box_data.append(
+        self.bounding_box_data.append(
                 Model.BoundingBoxData(name, bbox_list))
 
-            if 'cams' in data:
-                for _, val in data['cams'].items():
-                    lidar2img_rt = val['lidar2img_rt']
-                    bbox_data = data['bounding_boxes']
-                    bbox_3d_img = BoundingBox3D.project_to_img(
-                        bbox_data, np.copy(val['img']), lidar2img_rt)
-                    val['bbox_3d'] = bbox_3d_img
+        if 'img' in prepared_data and 'img_metas' in prepared_data:    
+            data['cams'] = dict()
+            
+            img_metas = prepared_data['img_metas']._data
+            img_container = prepared_data['img']._data.numpy()
+            for index in range(img_container.shape[0]):
+                # need to transpose channel to first dim
+                img_tensor = img_container[index].transpose(1, 2, 0)
+                img_tensor = mmcv.bgr2rgb(img_tensor)
+                data['cams'][self._cam_names[index]] = dict()
+                data['cams'][self._cam_names[index]]['img'] = img_tensor
+                data['cams'][self._cam_names[index]]['bbox_3d'] = show_multi_modality_result(img=img_tensor, gt_bboxes= ann_info['gt_bboxes_3d'], pred_bboxes=None, proj_mat=img_metas['lidar2img'][index], out_dir=None, filename=None, box_mode='lidar', img_metas=img_metas, show=False, write=False)
+        # if 'cams' in data:
+        #     for _, val in data['cams'].items():
+        #         lidar2img_rt = val['lidar2img_rt']
+        #         bbox_data = data['bounding_boxes']
+        #         bbox_3d_img = BoundingBox3D.project_to_img(
+        #             bbox_data, np.copy(val['img']), lidar2img_rt)
+        #         val['bbox_3d'] = bbox_3d_img
 
-                self.create_cams(data['name'], data['cams'], update=True)
+        self.create_cams(data['name'], data['cams'], update=True)
+        # self.create_cams(data['name'], img_container, img_metas, update=True)
 
         size = self._calc_pointcloud_size(self._data[name], self.tclouds[name],
                                           self.tcams[name])
@@ -790,14 +813,11 @@ class Visualizer:
 
     def _init_dataset(self, dataset, split, indices):
         self._objects = DatasetModel(dataset, split, indices)
-        self._modality = dict()
-        if 'lidar_path' in self._objects._dataset.infos[0]:
-            self._modality['use_lidar'] = True
-        if 'cams' in self._objects._dataset.infos[0]:
-            self._modality['use_camera'] = True
-            self._cam_names = list(
-                self._objects._dataset.infos[0]['cams'].keys())
-
+        # TODO: define this inside DatasetModel
+        self._modality = dataset.modality
+        if 'use_camera' in self._modality:
+            self._cam_names = list(self._objects._infos[0]['cams'].keys())
+            
     def _init_data(self, data):
         self._objects = DataModel(data)
         self._modality = dict()
@@ -807,8 +827,9 @@ class Visualizer:
                     self._modality['use_lidar'] = True
                 if 'cams' in val:
                     self._modality['use_camera'] = True
-                    self._cam_names = list(
-                        self._objects._dataset.infos[0]['cams'].keys())
+                    # self._cam_names = list(
+                    #     self._objects._dataset.infos[0]['cams'].keys())
+                    self._cam_names = list(val['cams'].keys())
 
     def _init_user_interface(self, title, width, height):
         self.window = gui.Application.instance.create_window(
@@ -951,7 +972,7 @@ class Visualizer:
         if 'use_camera' in self._modality and self._modality['use_camera']:
             w = gui.CollapsableVert("Cameras", 0, indented_margins)
             cam_grid = gui.VGrid(
-                2, 0, indented_margins)  # change no. of cam_grid columns here
+                1, 0, indented_margins)  # change no. of cam_grid columns here
 
             self._img = dict()
             w.add_child(cam_grid)

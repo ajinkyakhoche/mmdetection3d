@@ -2,7 +2,7 @@
 import mmcv
 import numpy as np
 
-from mmdet3d.core.points import BasePoints, get_points_type
+from mmdet3d.core.points import BasePoints, LiDARPoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
 
@@ -193,7 +193,11 @@ class LoadPointsFromMultiSweeps(object):
                     cloud arrays.
         """
         points = results['points']
-        points.tensor[:, 4] = 0
+        # points.tensor[:, 4] = 0
+        points_np = points.tensor.numpy()
+        points_np = np.hstack((points_np, np.zeros((points_np.shape[0],1))))
+        points = LiDARPoints(points_np, points_dim = int(points_np.shape[1]))
+
         sweep_points_list = [points]
         ts = results['timestamp']
         if self.pad_empty_sweeps and len(results['sweeps']) == 0:
@@ -220,12 +224,16 @@ class LoadPointsFromMultiSweeps(object):
                 points_sweep[:, :3] = points_sweep[:, :3] @ sweep[
                     'sensor2lidar_rotation'].T
                 points_sweep[:, :3] += sweep['sensor2lidar_translation']
-                points_sweep[:, 4] = ts - sweep_ts
+                # points_sweep[:, 4] = ts - sweep_ts
+                points_sweep = np.hstack((points_sweep, np.zeros((points_sweep.shape[0],1))))
+                points_sweep[:, -1] = ts - sweep_ts
                 points_sweep = points.new_point(points_sweep)
                 sweep_points_list.append(points_sweep)
 
         points = points.cat(sweep_points_list)
-        points = points[:, self.use_dim]
+        # self.use_dim.append(points_sweep.shape[1]-1)
+        
+        # points = points[:, self.use_dim]
         results['points'] = points
         return results
 

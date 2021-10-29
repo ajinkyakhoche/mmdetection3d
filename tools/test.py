@@ -126,23 +126,23 @@ def main():
         torch.backends.cudnn.benchmark = True
 
     cfg.model.pretrained = None
-    # in case the test dataset is concatenated
+    # # in case the test dataset is concatenated
     samples_per_gpu = 1
-    if isinstance(cfg.data.test, dict):
-        cfg.data.test.test_mode = True
-        samples_per_gpu = cfg.data.test.pop('samples_per_gpu', 1)
-        if samples_per_gpu > 1:
-            # Replace 'ImageToTensor' to 'DefaultFormatBundle'
-            cfg.data.test.pipeline = replace_ImageToTensor(
-                cfg.data.test.pipeline)
-    elif isinstance(cfg.data.test, list):
-        for ds_cfg in cfg.data.test:
-            ds_cfg.test_mode = True
-        samples_per_gpu = max(
-            [ds_cfg.pop('samples_per_gpu', 1) for ds_cfg in cfg.data.test])
-        if samples_per_gpu > 1:
-            for ds_cfg in cfg.data.test:
-                ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
+    # if isinstance(cfg.data.test, dict):
+    #     cfg.data.test.test_mode = True
+    #     samples_per_gpu = cfg.data.test.pop('samples_per_gpu', 1)
+    #     if samples_per_gpu > 1:
+    #         # Replace 'ImageToTensor' to 'DefaultFormatBundle'
+    #         cfg.data.test.pipeline = replace_ImageToTensor(
+    #             cfg.data.test.pipeline)
+    # elif isinstance(cfg.data.test, list):
+    #     for ds_cfg in cfg.data.test:
+    #         ds_cfg.test_mode = True
+    #     samples_per_gpu = max(
+    #         [ds_cfg.pop('samples_per_gpu', 1) for ds_cfg in cfg.data.test])
+    #     if samples_per_gpu > 1:
+    #         for ds_cfg in cfg.data.test:
+    #             ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
 
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
@@ -156,6 +156,9 @@ def main():
         set_random_seed(args.seed, deterministic=args.deterministic)
 
     # build the dataloader
+    # cfg.data.train.pipeline = cfg.eval_pipeline
+    cfg.data.test.ann_file = cfg.data.train.ann_file
+
     dataset = build_dataset(cfg.data.test)
     data_loader = build_dataloader(
         dataset,

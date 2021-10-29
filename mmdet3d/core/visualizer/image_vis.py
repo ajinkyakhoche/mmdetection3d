@@ -76,6 +76,10 @@ def plot_rect3d_on_img(img,
                     (4, 5), (4, 7), (2, 6), (5, 6), (6, 7))
     for i in range(num_rects):
         corners = rect_corners[i].astype(np.int)
+        # ignore boxes outside a certain threshold
+        interesting_corners_scale = 3.0
+        if min(corners[:,0]) < -interesting_corners_scale * img.shape[1] or max(corners[:,0]) > interesting_corners_scale * img.shape[1] or min(corners[:,1]) < -interesting_corners_scale * img.shape[0] or max(corners[:,1]) > interesting_corners_scale * img.shape[0]:
+            continue
         for start, end in line_indices:
             cv2.line(img, (corners[start, 0], corners[start, 1]),
                      (corners[end, 0], corners[end, 1]), color, thickness,

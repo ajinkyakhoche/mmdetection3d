@@ -8,7 +8,7 @@ from os import path as osp
 from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
                                DepthInstance3DBoxes, LiDARInstance3DBoxes)
 from mmdet3d.core.visualizer import (show_multi_modality_result, show_result,
-                                     show_seg_result)
+                                     show_seg_result, Visualizer)
 from mmdet3d.datasets import build_dataset
 
 
@@ -195,6 +195,9 @@ def main():
         dataset = build_dataset(cfg.data.train)
     data_infos = dataset.data_infos
     dataset_type = cfg.dataset_type
+
+    v = Visualizer()
+    v.visualize_dataset(dataset, 'train', range(10))
 
     # configure visualization mode
     vis_task = args.task  # 'det', 'seg', 'multi_modality-det', 'mono-det'
