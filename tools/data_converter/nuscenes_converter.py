@@ -12,6 +12,13 @@ from typing import List, Tuple, Union
 
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d.datasets import NuScenesDataset
+import torch, numpy, PIL
+import sys
+sys.path.append('../pytorch-pwc/')
+from run import compute_flow
+sys.path.append('../pwc-net.pytorch/')
+from PWC_src import flow_to_image
+import matplotlib.pyplot as plt
 
 nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
                   'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
@@ -204,10 +211,60 @@ def _fill_trainval_infos(nusc,
         for cam in camera_types:
             cam_token = sample['data'][cam]
             cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
+            
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
             cam_info.update(cam_intrinsic=cam_intrinsic)
             info['cams'].update({cam: cam_info})
+
+            # save optical flow info
+            if sample['next']!='':
+                next_cam_path, _, _ = nusc.get_sample_data(nusc.get('sample', sample['next'])['data'][cam])
+                img1 = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(cam_path))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
+                img2 = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(next_cam_path))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
+                flo = compute_flow(img1,img2)
+                flo_np = flo.numpy().transpose((1,2,0))
+                flo_img = flow_to_image(flo_np)
+                # # plt.imshow(flo_img), plt.show()
+                # if not osp.exists(osp.join("data/nuscenes/FLOW", cam)):
+                #     os.makedirs(osp.join("data/nuscenes/FLOW", cam))
+                # plt.imsave(osp.join("data/nuscenes/FLOW", cam, cam_path.split('/')[-1]), flo_img)
+
+                # factor out ego motion from optical flow
+                sd_rec_next = nusc.get('sample_data', nusc.get('sample', sample['next'])['data']['LIDAR_TOP'])
+                cs_record_next = nusc.get('calibrated_sensor',
+                             sd_rec_next['calibrated_sensor_token'])
+                pose_record_next = nusc.get('ego_pose', sd_rec_next['ego_pose_token'])
+
+                T_cam2lidar = np.eye(4)
+                T_cam2lidar[:3,:3] = cam_info['sensor2lidar_rotation']
+                T_cam2lidar[:3,-1] = cam_info['sensor2lidar_translation']
+                T_lidar2cam = np.linalg.inv(T_cam2lidar)
+
+                lidar_points = np.fromfile(str(lidar_path), dtype=np.float32).reshape(-1, 5)[:, :3]
+
+                P_t = np.vstack((lidar_points.T, np.ones((lidar_points.shape[0]))))
+                P_t_cam = (T_lidar2cam @ P_t)[:3,:]
+                P_t_img = cam_info['cam_intrinsic'] @ P_t_cam
+                P_t_img = P_t_img[:2,:]/P_t_img[2,:]
+
+                pose_t = np.eye(4)
+                pose_t[:3,:3] = Quaternion(pose_record['rotation']).rotation_matrix
+                pose_t[:3,-1] = pose_record['translation']
+                
+                pose_t_next = np.eye(4)
+                pose_t_next[:3,:3] = Quaternion(pose_record_next['rotation']).rotation_matrix
+                pose_t_next[:3,-1] = pose_record_next['translation']
+                delta_T = np.dot(np.linalg.inv(pose_t), pose_t_next)
+                
+                P_t_fwd = (delta_T @ P_t)
+                P_t_fwd_cam = (T_lidar2cam @ P_t_fwd)[:3,:]
+                P_t_fwd_img = cam_info['cam_intrinsic'] @ P_t_fwd_cam
+                P_t_fwd_img = P_t_fwd_img[:2,:]/P_t_fwd_img[2,:]
+
+                F_t_ego = P_t_fwd_img - P_t_img
+                # # intrinsic matrix
+                # K = np.eye(4); K[:3,:3] = cam_info['cam_intrinsic']
 
         # obtain sweeps for a single key-frame
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
