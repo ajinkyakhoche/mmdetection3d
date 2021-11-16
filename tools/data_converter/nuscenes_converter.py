@@ -14,8 +14,7 @@ from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d.datasets import NuScenesDataset
 import torch, numpy, PIL
 import sys
-sys.path.append('../pwc-net.pytorch/')
-from PWC_src import flow_to_image, PWC_Net
+from tools.optical_flow.flowlib import flow_to_image
 import matplotlib.pyplot as plt
 import open3d as o3d
 from tools.optical_flow.pwcnet import * 
