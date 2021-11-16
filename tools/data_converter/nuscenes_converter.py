@@ -14,11 +14,11 @@ from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d.datasets import NuScenesDataset
 import torch, numpy, PIL
 import sys
-sys.path.append('../pytorch-pwc/')
-from run import compute_flow
 sys.path.append('../pwc-net.pytorch/')
-from PWC_src import flow_to_image
+from PWC_src import flow_to_image, PWC_Net
 import matplotlib.pyplot as plt
+import open3d as o3d
+from tools.optical_flow.pwcnet import * 
 
 nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
                   'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
@@ -29,6 +29,8 @@ nus_attributes = ('cycle.with_rider', 'cycle.without_rider',
                   'pedestrian.sitting_lying_down', 'vehicle.moving',
                   'vehicle.parked', 'vehicle.stopped', 'None')
 
+IMG_WIDTH= 1600
+IMG_HEIGHT = 900
 
 def create_nuscenes_infos(root_path,
                           info_prefix,
@@ -147,6 +149,11 @@ def get_available_scenes(nusc):
     print('exist scene num: {}'.format(len(available_scenes)))
     return available_scenes
 
+def get_transformation_matrix(rot, trans):
+    T = np.eye(4)
+    T[:3,:3] = rot
+    T[:3,-1] = trans
+    return T
 
 def _fill_trainval_infos(nusc,
                          train_scenes,
@@ -170,7 +177,7 @@ def _fill_trainval_infos(nusc,
     train_nusc_infos = []
     val_nusc_infos = []
 
-    for sample in mmcv.track_iter_progress(nusc.sample):
+    for idx, sample in enumerate(mmcv.track_iter_progress(nusc.sample)):
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
@@ -220,11 +227,10 @@ def _fill_trainval_infos(nusc,
             # save optical flow info
             if sample['next']!='':
                 next_cam_path, _, _ = nusc.get_sample_data(nusc.get('sample', sample['next'])['data'][cam])
-                img1 = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(cam_path))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
-                img2 = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(next_cam_path))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
+                img1 = mmcv.imread(cam_path)
+                img2 = mmcv.imread(next_cam_path)
                 flo = compute_flow(img1,img2)
-                flo_np = flo.numpy().transpose((1,2,0))
-                flo_img = flow_to_image(flo_np)
+                # flo_img = flow_to_image(flo)
                 # # plt.imshow(flo_img), plt.show()
                 # if not osp.exists(osp.join("data/nuscenes/FLOW", cam)):
                 #     os.makedirs(osp.join("data/nuscenes/FLOW", cam))
@@ -236,35 +242,65 @@ def _fill_trainval_infos(nusc,
                              sd_rec_next['calibrated_sensor_token'])
                 pose_record_next = nusc.get('ego_pose', sd_rec_next['ego_pose_token'])
 
-                T_cam2lidar = np.eye(4)
-                T_cam2lidar[:3,:3] = cam_info['sensor2lidar_rotation']
-                T_cam2lidar[:3,-1] = cam_info['sensor2lidar_translation']
+                T_cam2lidar = get_transformation_matrix(cam_info['sensor2lidar_rotation'], cam_info['sensor2lidar_translation'])
                 T_lidar2cam = np.linalg.inv(T_cam2lidar)
 
                 lidar_points = np.fromfile(str(lidar_path), dtype=np.float32).reshape(-1, 5)[:, :3]
 
-                P_t = np.vstack((lidar_points.T, np.ones((lidar_points.shape[0]))))
-                P_t_cam = (T_lidar2cam @ P_t)[:3,:]
+                P_t_lidar = np.vstack((lidar_points.T, np.ones((lidar_points.shape[0]))))
+                P_t_cam = (T_lidar2cam @ P_t_lidar)[:3,:]
                 P_t_img = cam_info['cam_intrinsic'] @ P_t_cam
                 P_t_img = P_t_img[:2,:]/P_t_img[2,:]
-
-                pose_t = np.eye(4)
-                pose_t[:3,:3] = Quaternion(pose_record['rotation']).rotation_matrix
-                pose_t[:3,-1] = pose_record['translation']
+                P_t_img = P_t_img.T
                 
-                pose_t_next = np.eye(4)
-                pose_t_next[:3,:3] = Quaternion(pose_record_next['rotation']).rotation_matrix
-                pose_t_next[:3,-1] = pose_record_next['translation']
-                delta_T = np.dot(np.linalg.inv(pose_t), pose_t_next)
+                T_lidar2ego = get_transformation_matrix(l2e_r_mat, l2e_t)
+                # pose at time t
+                T_ego2global = get_transformation_matrix(e2g_r_mat, e2g_t)
+                T_cam2ego = get_transformation_matrix(Quaternion(cam_info['sensor2ego_rotation']).rotation_matrix, cam_info['sensor2ego_translation'])
+                T_ego2cam = np.linalg.inv(T_cam2ego)
                 
-                P_t_fwd = (delta_T @ P_t)
-                P_t_fwd_cam = (T_lidar2cam @ P_t_fwd)[:3,:]
-                P_t_fwd_img = cam_info['cam_intrinsic'] @ P_t_fwd_cam
-                P_t_fwd_img = P_t_fwd_img[:2,:]/P_t_fwd_img[2,:]
+                # pose at t+1
+                T_ego2global_next = get_transformation_matrix(Quaternion(pose_record_next['rotation']).rotation_matrix, pose_record_next['translation'])
+                # tf from t to t+1
+                delta_T = np.dot(np.linalg.inv(T_ego2global_next), T_ego2global)
+                P_t_next_ego = delta_T @ T_lidar2ego @ P_t_lidar
+                P_t_next_cam = T_ego2cam @ P_t_next_ego
+                P_t_next_img = cam_info['cam_intrinsic'] @ P_t_next_cam[:3,:]
+                P_t_next_img = P_t_next_img[:2,:]/P_t_next_img[2,:]
+                P_t_next_img = P_t_next_img.T
+                
+                # # show img 
+                # plt.subplot(1,2,1); plt.imshow(img1); plt.subplot(1,2,2); plt.imshow(img2); plt.show()
+                
+                # # show pc
+                # a = o3d.geometry.TriangleMesh.create_coordinate_frame();
+                # b = o3d.geometry.TriangleMesh.create_coordinate_frame(size=2); b.transform(delta_T)
+                # pcd = o3d.geometry.PointCloud(); pcd.points = o3d.utility.Vector3dVector((T_lidar2ego@P_t_lidar).T[:,:3])
+                # pcd1 = o3d.geometry.PointCloud(); pcd1.points = o3d.utility.Vector3dVector(P_t_next_ego.T[:,:3]); pcd1.paint_uniform_color([1, 0.706, 0])
+                # o3d.visualization.draw_geometries([pcd, pcd1, a,b])
+                
+                fov_inds = (P_t_img[:, 0] < IMG_WIDTH - 1) & (P_t_img[:, 0] >= 0) & \
+                (P_t_img[:, 1] < IMG_HEIGHT - 1) & (P_t_img[:, 1] >= 0)
+                fov_inds_next = (P_t_next_img[:, 0] < IMG_WIDTH - 1) & (P_t_next_img[:, 0] >= 0) & \
+                (P_t_next_img[:, 1] < IMG_HEIGHT - 1) & (P_t_next_img[:, 1] >= 0)
+                fov_common = fov_inds_next & fov_inds
+                F_t_ego = np.zeros_like(P_t_img)
+                F_t_ego[fov_common] = P_t_next_img[fov_common] - P_t_img[fov_common]
+                
+                F_t_cam = np.zeros_like(F_t_ego)
+                F_t_obj = np.zeros_like(F_t_ego)
+                p_t_img = np.round(P_t_img).astype(int)
+                F_t_cam[fov_common] = flo[p_t_img[fov_common][:,1], p_t_img[fov_common][:,0]]
+                F_t_obj[fov_common] = F_t_cam[fov_common] - F_t_ego[fov_common]
 
-                F_t_ego = P_t_fwd_img - P_t_img
-                # # intrinsic matrix
-                # K = np.eye(4); K[:3,:3] = cam_info['cam_intrinsic']
+                flo_obj = np.ones_like(flo) * -999
+                flo_obj[p_t_img[fov_common][:,1], p_t_img[fov_common][:,0]] = F_t_obj[fov_common]
+                # flo_obj_img = flow_to_image(flo_obj)
+
+                # if not osp.exists(osp.join("data/nuscenes/FLOW_OBJ", cam)):
+                #     os.makedirs(osp.join("data/nuscenes/FLOW_OBJ", cam))
+                # plt.imsave(osp.join("data/nuscenes/FLOW_OBJ", cam, cam_path.split('/')[-1]), flo_obj_img)
+
 
         # obtain sweeps for a single key-frame
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
