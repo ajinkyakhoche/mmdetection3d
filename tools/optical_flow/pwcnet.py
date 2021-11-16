@@ -17,8 +17,7 @@ os.environ['PYTHON_EGG_CACHE'] = 'tmp/' # a writable directory
 from tools.optical_flow.correlation_package.correlation import Correlation
 import numpy as np
 from math import ceil
-import cv2
-
+import mmcv
 
 
 
@@ -539,7 +538,7 @@ def compute_flow(im1, im2):
     H_ = int(ceil(H/divisor) * divisor)
     W_ = int(ceil(W/divisor) * divisor)
     for i in range(len(im_all)):
-        im_all[i] = cv2.resize(im_all[i], (W_, H_))
+        im_all[i] = mmcv.imresize(im_all[i], (W_, H_))
 
     for _i, _inputs in enumerate(im_all):
         im_all[_i] = im_all[_i][:, :, ::-1]
@@ -558,8 +557,8 @@ def compute_flow(im1, im2):
 
     # scale the flow back to the input size 
     flo = np.swapaxes(np.swapaxes(flo, 0, 1), 1, 2) # 
-    u_ = cv2.resize(flo[:,:,0],(W,H))
-    v_ = cv2.resize(flo[:,:,1],(W,H))
+    u_ = mmcv.imresize(flo[:,:,0],(W,H))
+    v_ = mmcv.imresize(flo[:,:,1],(W,H))
     u_ *= W/ float(W_)
     v_ *= H/ float(H_)
     flo = np.dstack((u_,v_))
