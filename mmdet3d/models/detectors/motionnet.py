@@ -7,6 +7,7 @@ from .mvx_two_stage import MVXTwoStageDetector
 from .. import builder
 from mmdet3d.core import VoxelGenerator
 from mmcv.runner import force_fp32
+from torch.nn import functional as F
 
 """
 The below code is credited from the paper
@@ -50,7 +51,7 @@ class MotionNet(MVXTwoStageDetector):
                              train_cfg, test_cfg, pretrained, init_cfg)
 
         if motion_prediction_head is not None:
-            self.motion_pred = builder.build_head(motion_prediction_head)
+            self.motion_pred_head = builder.build_head(motion_prediction_head)
 
         # override pts_voxel_layer
         self.pts_voxel_layer = VoxelGenerator(**pts_voxel_layer_copy)
@@ -159,7 +160,8 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of each branch.
         """
-        outs = self.pts_bbox_head(pts_feats)
+        outs = self.motion_pred_head(pts_feats)
+        # outs = self.pts_bbox_head(pts_feats)
         loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
         losses = self.pts_bbox_head.loss(*loss_inputs)
         return losses
