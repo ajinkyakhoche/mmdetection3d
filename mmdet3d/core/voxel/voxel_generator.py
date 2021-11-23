@@ -200,7 +200,7 @@ def _points_to_voxel_reverse_kernel(points,
                 failed = True
                 break
             coor[ndim_minus_1 - j] = c  # zyx
-            # this is probably incorrect. this will cause all sweeps to have 0th
+            # TODO: this is probably incorrect. this will cause all sweeps to have 0th
             # dim for time diff. 
             coor[3] = int(points[i, -1]) 
         if failed:
