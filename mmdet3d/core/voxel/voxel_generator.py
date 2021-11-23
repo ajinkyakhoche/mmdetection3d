@@ -17,6 +17,7 @@ class VoxelGenerator(object):
     def __init__(self,
                  voxel_size,
                  point_cloud_range,
+                 nsweeps,
                  max_num_points,
                  max_voxels=20000):
 
@@ -32,11 +33,12 @@ class VoxelGenerator(object):
         self._max_num_points = max_num_points
         self._max_voxels = max_voxels
         self._grid_size = grid_size
+        self._nsweeps = nsweeps
 
     def generate(self, points):
         """Generate voxels given points."""
         return points_to_voxel(points, self._voxel_size,
-                               self._point_cloud_range, self._max_num_points,
+                               self._point_cloud_range, self._nsweeps, self._max_num_points,
                                True, self._max_voxels)
 
     @property
@@ -76,6 +78,7 @@ class VoxelGenerator(object):
 def points_to_voxel(points,
                     voxel_size,
                     coors_range,
+                    nsweeps,
                     max_points=35,
                     reverse_index=True,
                     max_voxels=20000):
@@ -110,12 +113,16 @@ def points_to_voxel(points,
     voxelmap_shape = tuple(np.round(voxelmap_shape).astype(np.int32).tolist())
     if reverse_index:
         voxelmap_shape = voxelmap_shape[::-1]
+    voxelmap_shape = voxelmap_shape+tuple([nsweeps])
+
     # don't create large array in jit(nopython=True) code.
     num_points_per_voxel = np.zeros(shape=(max_voxels, ), dtype=np.int32)
     coor_to_voxelidx = -np.ones(shape=voxelmap_shape, dtype=np.int32)
     voxels = np.zeros(
         shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype)
-    coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
+    # coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
+    # add another dimension to coors, for time diff
+    coors = np.zeros(shape=(max_voxels, 4), dtype=np.int32)
     if reverse_index:
         voxel_num = _points_to_voxel_reverse_kernel(
             points, voxel_size, coors_range, num_points_per_voxel,
@@ -180,7 +187,9 @@ def _points_to_voxel_reverse_kernel(points,
     # np.round(grid_size)
     # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
     grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
-    coor = np.zeros(shape=(3, ), dtype=np.int32)
+    # coor = np.zeros(shape=(3, ), dtype=np.int32)
+    # add another dimension to coor, for time diff
+    coor = np.zeros(shape=(4, ), dtype=np.int32)
     voxel_num = 0
     failed = False
     for i in range(N):
@@ -190,16 +199,21 @@ def _points_to_voxel_reverse_kernel(points,
             if c < 0 or c >= grid_size[j]:
                 failed = True
                 break
-            coor[ndim_minus_1 - j] = c
+            coor[ndim_minus_1 - j] = c  # zyx
+            # this is probably incorrect. this will cause all sweeps to have 0th
+            # dim for time diff. 
+            coor[3] = int(points[i, -1]) 
         if failed:
             continue
-        voxelidx = coor_to_voxelidx[coor[0], coor[1], coor[2]]
+        # voxelidx = coor_to_voxelidx[coor[0], coor[1], coor[2]]
+        voxelidx = coor_to_voxelidx[coor[0], coor[1], coor[2], coor[3]] # zyxt
         if voxelidx == -1:
             voxelidx = voxel_num
             if voxel_num >= max_voxels:
                 continue
             voxel_num += 1
-            coor_to_voxelidx[coor[0], coor[1], coor[2]] = voxelidx
+            # coor_to_voxelidx[coor[0], coor[1], coor[2]] = voxelidx
+            coor_to_voxelidx[coor[0], coor[1], coor[2], coor[3]] = voxelidx
             coors[voxelidx] = coor
         num = num_points_per_voxel[voxelidx]
         if num < max_points:
