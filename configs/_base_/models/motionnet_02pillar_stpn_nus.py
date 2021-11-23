@@ -1,9 +1,9 @@
-number_past_scans = 10
+number_past_scans = 5
 voxel_size = [0.2, 0.2, 8]
 model = dict(
     type='MotionNet',
     pts_voxel_layer=dict(
-        max_num_points=20, voxel_size=voxel_size, max_voxels=(30000, 40000)),
+        max_num_points=20, voxel_size=voxel_size, nsweeps=number_past_scans, max_voxels=30000), #max_voxels=(30000, 40000)
     pts_voxel_encoder=dict(
         type='PillarFeatureNet',
         in_channels=5,
@@ -24,7 +24,7 @@ model = dict(
     #     conv_cfg=dict(type='Conv2d', bias=False)),
     pts_neck=dict(
         type='STPN',
-        height_feat_size=13
+        height_feat_size=64
         #type='SECONDFPN',
         # in_channels=[64, 128, 256],
         # out_channels=[128, 128, 128],
@@ -62,7 +62,7 @@ model = dict(
     #     norm_bbox=True),
     motion_prediction_head=dict(
         type='MotionPrediction',
-        seq_len=10
+        seq_len=number_past_scans
     ),
     # model training and testing settings
     train_cfg=dict(
