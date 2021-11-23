@@ -110,10 +110,10 @@ class MotionNet(MVXTwoStageDetector):
         """
         voxels, coors, num_points = [], [], []
         for res in points:
-            res_voxels, res_coors, res_num_points = self.pts_voxel_layer.generate(res)
-            voxels.append(res_voxels)
-            coors.append(res_coors)
-            num_points.append(res_num_points)
+            res_voxels, res_coors, res_num_points = self.pts_voxel_layer.generate(res.cpu().numpy())
+            voxels.append(torch.from_numpy(res_voxels).to(res.device))
+            coors.append(torch.from_numpy(res_coors).to(res.device))
+            num_points.append(torch.from_numpy(res_num_points).to(res.device))
         voxels = torch.cat(voxels, dim=0)
         num_points = torch.cat(num_points, dim=0)
         coors_batch = []
