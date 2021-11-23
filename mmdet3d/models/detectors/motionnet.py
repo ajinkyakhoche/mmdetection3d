@@ -97,6 +97,20 @@ class MotionNet(MVXTwoStageDetector):
         return voxels, coors, num_points_per_voxel
     """
     
+    def extract_pts_feat(self, pts, img_feats, img_metas):
+        """Extract features of points."""
+        # if not self.with_pts_bbox:
+        #     return None
+        voxels, num_points, coors = self.voxelize(pts)
+
+        voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
+        batch_size = coors[-1, 0] + 1
+        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
+        # x = self.pts_backbone(x)
+        if self.with_pts_neck:
+            x = self.pts_neck(x)
+        return x
+
     @torch.no_grad()
     @force_fp32()
     def voxelize(self, points):
@@ -124,20 +138,59 @@ class MotionNet(MVXTwoStageDetector):
         coors_batch = torch.cat(coors_batch, dim=0)
         return voxels, num_points, coors_batch
 
+    def forward_train(self,
+                      points=None,
+                      img_metas=None,
+                      gt_bboxes_3d=None,
+                      gt_labels_3d=None,
+                      gt_labels=None,
+                      gt_bboxes=None,
+                      img=None,
+                      proposals=None,
+                      gt_bboxes_ignore=None):
+        """Forward training function.
 
-    def extract_pts_feat(self, pts, img_feats, img_metas):
-        """Extract features of points."""
-        # if not self.with_pts_bbox:
-        #     return None
-        voxels, num_points, coors = self.voxelize(pts)
+        Args:
+            points (list[torch.Tensor], optional): Points of each sample.
+                Defaults to None.
+            img_metas (list[dict], optional): Meta information of each sample.
+                Defaults to None.
+            gt_bboxes_3d (list[:obj:`BaseInstance3DBoxes`], optional):
+                Ground truth 3D boxes. Defaults to None.
+            gt_labels_3d (list[torch.Tensor], optional): Ground truth labels
+                of 3D boxes. Defaults to None.
+            gt_labels (list[torch.Tensor], optional): Ground truth labels
+                of 2D boxes in images. Defaults to None.
+            gt_bboxes (list[torch.Tensor], optional): Ground truth 2D boxes in
+                images. Defaults to None.
+            img (torch.Tensor optional): Images of each sample with shape
+                (N, C, H, W). Defaults to None.
+            proposals ([list[torch.Tensor], optional): Predicted proposals
+                used for training Fast RCNN. Defaults to None.
+            gt_bboxes_ignore (list[torch.Tensor], optional): Ground truth
+                2D boxes in images to be ignored. Defaults to None.
 
-        voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
-        batch_size = coors[-1, 0] + 1
-        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
-        # x = self.pts_backbone(x)
-        if self.with_pts_neck:
-            x = self.pts_neck(x)
-        return x
+        Returns:
+            dict: Losses of different branches.
+        """
+        img_feats, pts_feats = self.extract_feat(
+            points, img=img, img_metas=img_metas)
+        losses = dict()
+        if pts_feats is not None:
+            losses_pts = self.forward_pts_train(pts_feats, gt_bboxes_3d,
+                                                gt_labels_3d, img_metas,
+                                                gt_bboxes_ignore)
+            losses.update(losses_pts)
+        if img_feats is not None:
+            losses_img = self.forward_img_train(
+                img_feats,
+                img_metas=img_metas,
+                gt_bboxes=gt_bboxes,
+                gt_labels=gt_labels,
+                gt_bboxes_ignore=gt_bboxes_ignore,
+                proposals=proposals)
+            losses.update(losses_img)
+        return losses
 
     def forward_pts_train(self,
                           pts_feats,
