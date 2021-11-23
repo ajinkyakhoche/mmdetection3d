@@ -28,7 +28,7 @@ file_client_args = dict(backend='disk')
 
 db_sampler = dict(
     data_root=data_root,
-    info_path=data_root + 'nuscenes_dbinfos_train.pkl',
+    info_path=data_root + 'nus_5_sweeps_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
         filter_by_difficulty=[-1],
@@ -77,7 +77,7 @@ train_pipeline = [
         pad_empty_sweeps=True,
         remove_close=True),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='ObjectSample', db_sampler=db_sampler),
+    # dict(type='ObjectSample', db_sampler=db_sampler),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
@@ -94,6 +94,7 @@ train_pipeline = [
     dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
+    # dict(type='Collect3D', keys=['points'])
 ]
 test_pipeline = [
     dict(
@@ -157,7 +158,7 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
-            ann_file=data_root + 'nuscenes_infos_train.pkl',
+            ann_file=data_root + 'motion_mini/nus_5_sweeps_infos_train.pkl',
             pipeline=train_pipeline,
             classes=class_names,
             test_mode=False,
