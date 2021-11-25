@@ -221,6 +221,14 @@ class NuScenesDataset(Custom3DDataset):
             input_dict.update(
                 pts_filename_next=info['lidar_path_next'],
             )
+        if 'sweeps_next' in info:
+            input_dict.update(
+                sweeps_next=info['sweeps_next'],
+            )
+        if 'timestamp_next' in info:
+            input_dict.update(
+                timestamp_next=info['timestamp_next'] / 1e6
+            )
         if self.modality['use_camera']:
             image_paths = []
             lidar2img_rts = []

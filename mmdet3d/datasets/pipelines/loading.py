@@ -192,26 +192,28 @@ class LoadPointsFromMultiSweeps(object):
                 - points (np.ndarray | :obj:`BasePoints`): Multi-sweep point \
                     cloud arrays.
         """
-        points = results['points']
+        for pts, tstamp, swp in zip(('points', 'points_next'), ('timestamp', 'timestamp_next'), ('sweeps', 'sweeps_next')):
+            if pts in results and tstamp in results and swp in results: 
+                points = results[pts]
         points.tensor[:, 4] = 0
         sweep_points_list = [points]
-        ts = results['timestamp']
-        if self.pad_empty_sweeps and len(results['sweeps']) == 0:
+                ts = results[tstamp]
+                if self.pad_empty_sweeps and len(results[swp]) == 0:
             for i in range(self.sweeps_num):
                 if self.remove_close:
                     sweep_points_list.append(self._remove_close(points))
                 else:
                     sweep_points_list.append(points)
         else:
-            if len(results['sweeps']) <= self.sweeps_num:
-                choices = np.arange(len(results['sweeps']))
+                    if len(results[swp]) <= self.sweeps_num:
+                        choices = np.arange(len(results[swp]))
             elif self.test_mode:
                 choices = np.arange(self.sweeps_num)
             else:
                 choices = np.random.choice(
-                    len(results['sweeps']), self.sweeps_num, replace=False)
+                            len(results[swp]), self.sweeps_num, replace=False)
             for idx in choices:
-                sweep = results['sweeps'][idx]
+                        sweep = results[swp][idx]
                 points_sweep = self._load_points(sweep['data_path'])
                 points_sweep = np.copy(points_sweep).reshape(-1, self.load_dim)
                 if self.remove_close:
@@ -226,6 +228,7 @@ class LoadPointsFromMultiSweeps(object):
 
         points = points.cat(sweep_points_list)
         points = points[:, self.use_dim]
+                results[pts] = points
         results['points'] = points
         return results
 
