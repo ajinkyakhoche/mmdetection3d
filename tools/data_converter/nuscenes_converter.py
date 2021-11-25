@@ -176,6 +176,11 @@ def _fill_trainval_infos(nusc,
     train_nusc_infos = []
     val_nusc_infos = []
 
+    # create folder for saving flow info
+    flow_path = os.path.join(nusc.dataroot, 'flow')
+    if not os.path.exists(flow_path):
+        os.mkdir(flow_path)
+
     for idx, sample in enumerate(mmcv.track_iter_progress(nusc.sample)):
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -340,6 +345,9 @@ def _fill_trainval_infos(nusc,
                 #     os.makedirs(osp.join("data/nuscenes/FLOW_OBJ", cam))
                 # plt.imsave(osp.join("data/nuscenes/FLOW_OBJ", cam, cam_path.split('/')[-1]), flo_obj_img)
 
+        # save optical flow
+        flo_to_lidar.tofile(os.path.join(flow_path, lidar_path.split('/')[-1]))
+        info.update(flow_path=os.path.join(flow_path, lidar_path.split('/')[-1]))
 
         # obtain sweeps for a single key-frame
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
