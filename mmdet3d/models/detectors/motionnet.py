@@ -97,11 +97,11 @@ class MotionNet(MVXTwoStageDetector):
         return voxels, coors, num_points_per_voxel
     """
     
-    def extract_pts_feat(self, pts, img_feats, img_metas):
+    def extract_pts_feat(self, voxels, num_points, coors, img_feats=None, img_metas=None):
         """Extract features of points."""
         # if not self.with_pts_bbox:
         #     return None
-        voxels, num_points, coors = self.voxelize(pts)
+        # voxels, num_points, coors = self.voxelize(pts)
 
         voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
         batch_size = coors[-1, 0] + 1
@@ -110,6 +110,13 @@ class MotionNet(MVXTwoStageDetector):
         if self.with_pts_neck:
             x = self.pts_neck(x)
         return x
+    
+    def extract_feat(self, voxelized_pc, img, img_metas):
+        """Extract features from images and points."""
+        img_feats = self.extract_img_feat(img, img_metas)
+        pts_feats = self.extract_pts_feat(voxels=voxelized_pc['voxels'], num_points=voxelized_pc['num_points'],
+            coors=voxelized_pc['coors'], img_feats=img_feats, img_metas=img_metas)
+        return (img_feats, pts_feats)
 
     @torch.no_grad()
     @force_fp32()
@@ -140,6 +147,8 @@ class MotionNet(MVXTwoStageDetector):
 
     def forward_train(self,
                       points=None,
+                      points_next=None,
+                      flow=None,
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
@@ -173,12 +182,17 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of different branches.
         """
+        voxels, num_points, coors = self.voxelize(points)
+        voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors)
+        voxels, num_points, coors = self.voxelize(points_next)
+        voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
+        
         img_feats, pts_feats = self.extract_feat(
-            points, img=img, img_metas=img_metas)
+            voxelized_pc, img=img, img_metas=img_metas)
         losses = dict()
         if pts_feats is not None:
-            losses_pts = self.forward_pts_train(pts_feats, gt_bboxes_3d,
-                                                gt_labels_3d, img_metas,
+            losses_pts = self.forward_pts_train(pts_feats, voxelized_pc, voxelized_pc_next,
+                                                flow, gt_bboxes_3d, gt_labels_3d, img_metas,
                                                 gt_bboxes_ignore)
             losses.update(losses_pts)
         if img_feats is not None:
@@ -194,6 +208,9 @@ class MotionNet(MVXTwoStageDetector):
 
     def forward_pts_train(self,
                           pts_feats,
+                          voxelized_pc,
+                          voxelized_pc_next,
+                          flow,
                           gt_bboxes_3d,
                           gt_labels_3d,
                           img_metas,
