@@ -220,16 +220,22 @@ def _fill_trainval_infos(nusc,
         )
 
         if sample['next']!='':
+            sample_next = nusc.get('sample', sample['next'])
+            lidar_token_next = sample_next['data']['LIDAR_TOP']
             # pose record at t+1
-            sd_rec_next = nusc.get('sample_data', nusc.get('sample', sample['next'])['data']['LIDAR_TOP'])
+            sd_rec_next = nusc.get('sample_data', lidar_token_next)
             cs_record_next = nusc.get('calibrated_sensor',
                         sd_rec_next['calibrated_sensor_token'])
             pose_record_next = nusc.get('ego_pose', sd_rec_next['ego_pose_token'])
+            lidar_path_next, boxes_next, _ = nusc.get_sample_data(lidar_token_next)
+            
             # pose at t+1
             T_ego2global_next = get_transformation_matrix(Quaternion(pose_record_next['rotation']).rotation_matrix, pose_record_next['translation'])
             
             info.update(
-                T_ego2global_next=T_ego2global_next
+                T_ego2global_next=T_ego2global_next,
+                lidar_path_next=lidar_path_next,
+                timestamp_next=sample_next['timestamp']
             )
 
         # read lidar data
