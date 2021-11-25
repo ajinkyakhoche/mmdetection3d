@@ -410,7 +410,9 @@ class LoadPointsFromFile(object):
 
                 - points (:obj:`BasePoints`): Point clouds data.
         """
-        pts_filename = results['pts_filename']
+        for key, val in {'pts_filename':'points', 'pts_filename_next':'points_next'}.items():
+            if key in results:
+                pts_filename = results[key]
         points = self._load_points(pts_filename)
         points = points.reshape(-1, self.load_dim)
         points = points[:, self.use_dim]
@@ -438,7 +440,7 @@ class LoadPointsFromFile(object):
         points_class = get_points_type(self.coord_type)
         points = points_class(
             points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
-        results['points'] = points
+                results[val] = points
 
         return results
 
