@@ -361,6 +361,20 @@ def _fill_trainval_infos(nusc,
             else:
                 break
         info['sweeps'] = sweeps
+        
+        # obtain sweeps for next key-frame
+        sweeps_next = []
+        while len(sweeps_next) < max_sweeps:
+            if not sd_rec_next['prev'] == '':
+                sweep_next = obtain_sensor2top(nusc, sd_rec_next['prev'], cs_record_next['translation'],
+                                          Quaternion(cs_record_next['rotation']).rotation_matrix, 
+                                          pose_record_next['translation'], Quaternion(pose_record['rotation']).rotation_matrix, 'lidar')
+                sweeps_next.append(sweep_next)
+                sd_rec_next = nusc.get('sample_data', sd_rec_next['prev'])
+            else:
+                break
+        info['sweeps_next'] = sweeps_next
+       
         # obtain annotation
         if not test:
             annotations = [
