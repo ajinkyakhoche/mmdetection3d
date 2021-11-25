@@ -195,41 +195,44 @@ class LoadPointsFromMultiSweeps(object):
         for pts, tstamp, swp in zip(('points', 'points_next'), ('timestamp', 'timestamp_next'), ('sweeps', 'sweeps_next')):
             if pts in results and tstamp in results and swp in results: 
                 points = results[pts]
-        points.tensor[:, 4] = 0
-        sweep_points_list = [points]
+                points.tensor[:, 4] = 0
+                sweep_points_list = [points]
                 ts = results[tstamp]
                 if self.pad_empty_sweeps and len(results[swp]) == 0:
-            for i in range(self.sweeps_num):
-                if self.remove_close:
-                    sweep_points_list.append(self._remove_close(points))
+                    for i in range(self.sweeps_num):
+                        if self.remove_close:
+                            sweep_points_list.append(self._remove_close(points))
+                        else:
+                            sweep_points_list.append(points)
                 else:
-                    sweep_points_list.append(points)
-        else:
                     if len(results[swp]) <= self.sweeps_num:
                         choices = np.arange(len(results[swp]))
-            elif self.test_mode:
-                choices = np.arange(self.sweeps_num)
-            else:
-                choices = np.random.choice(
+                    elif self.test_mode:
+                        choices = np.arange(self.sweeps_num)
+                    else:
+                        choices = np.random.choice(
                             len(results[swp]), self.sweeps_num, replace=False)
-            for idx in choices:
+                    for idx in choices:
                         sweep = results[swp][idx]
-                points_sweep = self._load_points(sweep['data_path'])
-                points_sweep = np.copy(points_sweep).reshape(-1, self.load_dim)
-                if self.remove_close:
-                    points_sweep = self._remove_close(points_sweep)
-                sweep_ts = sweep['timestamp'] / 1e6
-                points_sweep[:, :3] = points_sweep[:, :3] @ sweep[
-                    'sensor2lidar_rotation'].T
-                points_sweep[:, :3] += sweep['sensor2lidar_translation']
-                points_sweep[:, 4] = ts - sweep_ts
-                points_sweep = points.new_point(points_sweep)
-                sweep_points_list.append(points_sweep)
+                        points_sweep = self._load_points(sweep['data_path'])
+                        points_sweep = np.copy(points_sweep).reshape(-1, self.load_dim)
+                        if self.remove_close:
+                            points_sweep = self._remove_close(points_sweep)
+                        sweep_ts = sweep['timestamp'] / 1e6
+                        points_sweep[:, :3] = points_sweep[:, :3] @ sweep[
+                            'sensor2lidar_rotation'].T
+                        points_sweep[:, :3] += sweep['sensor2lidar_translation']
+                        points_sweep[:, 4] = ts - sweep_ts
+                        points_sweep = points.new_point(points_sweep)
+                        sweep_points_list.append(points_sweep)
 
-        points = points.cat(sweep_points_list)
-        points = points[:, self.use_dim]
+                points = points.cat(sweep_points_list)
+                points = points[:, self.use_dim]
                 results[pts] = points
-        results['points'] = points
+        
+        # load flow
+        if 'flow_path' in results:
+            results['flow'] = self._load_points(results['flow_path'])
         return results
 
     def __repr__(self):
@@ -416,33 +419,33 @@ class LoadPointsFromFile(object):
         for key, val in {'pts_filename':'points', 'pts_filename_next':'points_next'}.items():
             if key in results:
                 pts_filename = results[key]
-        points = self._load_points(pts_filename)
-        points = points.reshape(-1, self.load_dim)
-        points = points[:, self.use_dim]
-        attribute_dims = None
+                points = self._load_points(pts_filename)
+                points = points.reshape(-1, self.load_dim)
+                points = points[:, self.use_dim]
+                attribute_dims = None
 
-        if self.shift_height:
-            floor_height = np.percentile(points[:, 2], 0.99)
-            height = points[:, 2] - floor_height
-            points = np.concatenate(
-                [points[:, :3],
-                 np.expand_dims(height, 1), points[:, 3:]], 1)
-            attribute_dims = dict(height=3)
+                if self.shift_height:
+                    floor_height = np.percentile(points[:, 2], 0.99)
+                    height = points[:, 2] - floor_height
+                    points = np.concatenate(
+                        [points[:, :3],
+                        np.expand_dims(height, 1), points[:, 3:]], 1)
+                    attribute_dims = dict(height=3)
 
-        if self.use_color:
-            assert len(self.use_dim) >= 6
-            if attribute_dims is None:
-                attribute_dims = dict()
-            attribute_dims.update(
-                dict(color=[
-                    points.shape[1] - 3,
-                    points.shape[1] - 2,
-                    points.shape[1] - 1,
-                ]))
+                if self.use_color:
+                    assert len(self.use_dim) >= 6
+                    if attribute_dims is None:
+                        attribute_dims = dict()
+                    attribute_dims.update(
+                        dict(color=[
+                            points.shape[1] - 3,
+                            points.shape[1] - 2,
+                            points.shape[1] - 1,
+                        ]))
 
-        points_class = get_points_type(self.coord_type)
-        points = points_class(
-            points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
+                points_class = get_points_type(self.coord_type)
+                points = points_class(
+                    points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
                 results[val] = points
 
         return results
