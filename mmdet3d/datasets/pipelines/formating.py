@@ -207,6 +207,9 @@ class DefaultFormatBundle3D(DefaultFormatBundle):
         if 'points' in results:
             assert isinstance(results['points'], BasePoints)
             results['points'] = DC(results['points'].tensor)
+        if 'points_next' in results:
+            assert isinstance(results['points_next'], BasePoints)
+            results['points_next'] = DC(results['points_next'].tensor)
 
         for key in ['voxels', 'coors', 'voxel_centers', 'num_points']:
             if key not in results:
