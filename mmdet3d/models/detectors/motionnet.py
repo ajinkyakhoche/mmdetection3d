@@ -8,6 +8,7 @@ from .. import builder
 from mmdet3d.core import VoxelGenerator
 from mmcv.runner import force_fp32
 from torch.nn import functional as F
+from chamferdist import ChamferDistance
 
 """
 The below code is credited from the paper
@@ -230,9 +231,25 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of each branch.
         """
-        outs = self.motion_pred_head(pts_feats)
+        pred_motion = self.motion_pred_head(pts_feats)
+        c = voxelized_pc['coors']
+
+        print('')
+        
+        # apply predicted motion to pc at t to get a predicted pc at t+1
+        # TODO
+
+        # calculate chamfer loss between predicted pc and actual pc at t+1
+        v = voxelized_pc['voxels'].view(-1,5)
+        v = v[v.sum(dim=1) != 0]
+
+        v_next = voxelized_pc_next['voxels'].view(-1,5)
+        v_next = v_next[v_next.sum(dim=1) != 0]
+
+        chamfer_loss = chamferDist(v[None,:,:], v_next[None,:,:], bidirectional=True)
+
         # outs = self.pts_bbox_head(pts_feats)
-        loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
-        losses = self.pts_bbox_head.loss(*loss_inputs)
-        return losses
+        # loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
+        # losses = self.pts_bbox_head.loss(*loss_inputs)
+        # return losses
 
