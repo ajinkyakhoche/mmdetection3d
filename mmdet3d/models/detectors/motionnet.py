@@ -57,6 +57,8 @@ class MotionNet(MVXTwoStageDetector):
         # override pts_voxel_layer
         self.pts_voxel_layer = VoxelGenerator(**pts_voxel_layer_copy)
     
+        self.chamfer_dist = ChamferDistance()
+
     """
     def pts_voxel_layer(self, points):
         point_cloud_range = np.array(self.pts_voxel_layer["point_cloud_range"], dtype=np.float32)
@@ -232,24 +234,26 @@ class MotionNet(MVXTwoStageDetector):
             dict: Losses of each branch.
         """
         pred_motion = self.motion_pred_head(pts_feats)
-        c = voxelized_pc['coors']
-
-        print('')
+        coor = voxelized_pc['coors'][:,2:4]
+        pind = coor[:,0] * self.pts_voxel_layer.grid_size[0] + coor[:,1]
+        pred_flat = pred_motion.view(-1,2)
+        delta_voxel = pred_flat[pind.long()] 
+        pred_voxel = voxelized_pc['voxels'].clone()
         
         # apply predicted motion to pc at t to get a predicted pc at t+1
-        # TODO
+        pred_voxel[:,:,:2] = torch.add(pred_voxel[:,:,:2], delta_voxel[:,None,:]) # but this doesn't solve problem! all zeros have motion added to them! 
 
-        # calculate chamfer loss between predicted pc and actual pc at t+1
-        v = voxelized_pc['voxels'].view(-1,5)
-        v = v[v.sum(dim=1) != 0]
+        # extract pc from voxelized_pc, calculate chamfer loss between predicted pc and actual pc at t+1
+        non_zero_mask = voxelized_pc['voxels'].view(-1,5).sum(dim=1) != 0
+        v = pred_voxel.view(-1,5)[non_zero_mask,:]
 
         v_next = voxelized_pc_next['voxels'].view(-1,5)
         v_next = v_next[v_next.sum(dim=1) != 0]
 
-        chamfer_loss = chamferDist(v[None,:,:], v_next[None,:,:], bidirectional=True)
-
+        chamfer_loss = self.chamfer_dist(v[None,:,:], v_next[None,:,:], bidirectional=True)
+        losses = dict(chamfer_loss=chamfer_loss*1e-3)
         # outs = self.pts_bbox_head(pts_feats)
         # loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
         # losses = self.pts_bbox_head.loss(*loss_inputs)
-        # return losses
+        return losses
 
