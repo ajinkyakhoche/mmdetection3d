@@ -182,6 +182,8 @@ def _fill_trainval_infos(nusc,
         os.mkdir(flow_path)
 
     for idx, sample in enumerate(mmcv.track_iter_progress(nusc.sample)):
+        if sample['next']=='' :
+            continue
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
@@ -219,7 +221,6 @@ def _fill_trainval_infos(nusc,
             T_ego2global=T_ego2global
         )
 
-        if sample['next']!='':
             sample_next = nusc.get('sample', sample['next'])
             lidar_token_next = sample_next['data']['LIDAR_TOP']
             # pose record at t+1
