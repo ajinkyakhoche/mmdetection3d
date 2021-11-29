@@ -375,7 +375,7 @@ def _fill_trainval_infos(nusc,
             if not sd_rec_next['prev'] == '':
                 sweep_next = obtain_sensor2top(nusc, sd_rec_next['prev'], cs_record_next['translation'],
                                           Quaternion(cs_record_next['rotation']).rotation_matrix, 
-                                          pose_record_next['translation'], Quaternion(pose_record['rotation']).rotation_matrix, 'lidar')
+                                          pose_record_next['translation'], Quaternion(pose_record_next['rotation']).rotation_matrix, 'lidar')
                 sweeps_next.append(sweep_next)
                 sd_rec_next = nusc.get('sample_data', sd_rec_next['prev'])
             else:
