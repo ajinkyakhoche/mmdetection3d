@@ -221,6 +221,7 @@ class NuScenesDataset(Custom3DDataset):
             input_dict.update(
                 pts_filename_next=info['lidar_path_next'],
             )
+        
         if 'sweeps_next' in info:
             input_dict.update(
                 sweeps_next=info['sweeps_next'],
@@ -234,7 +235,22 @@ class NuScenesDataset(Custom3DDataset):
             input_dict.update(
                 flow_path=info['flow_path'],
             )
-            
+        
+        if 'T_ego2global' in info:
+            input_dict.update(
+                T_ego2global=info['T_ego2global'],
+            )
+
+        if 'T_ego2global_next' in info:
+            input_dict.update(
+                T_ego2global_next=info['T_ego2global_next'],
+            )
+        
+        if 'T_lidar2ego' in info:
+            input_dict.update(
+                T_lidar2ego=info['T_lidar2ego'],
+            )
+                
         if self.modality['use_camera']:
             image_paths = []
             lidar2img_rts = []
