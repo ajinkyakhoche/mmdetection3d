@@ -56,7 +56,7 @@ class MotionNet(MVXTwoStageDetector):
 
         # override pts_voxel_layer
         self.pts_voxel_layer = VoxelGenerator(**pts_voxel_layer_copy)
-    
+
         self.chamfer_dist = ChamferDistance()
 
     """
@@ -111,8 +111,8 @@ class MotionNet(MVXTwoStageDetector):
         x = self.pts_middle_encoder(voxel_features, coors, batch_size)
         # x = self.pts_backbone(x)
         if self.with_pts_neck:
-            x = self.pts_neck(x)
-        return x
+            x1 = self.pts_neck(x)
+        return x1
     
     def extract_feat(self, voxelized_pc, img, img_metas):
         """Extract features from images and points."""
@@ -187,6 +187,7 @@ class MotionNet(MVXTwoStageDetector):
         """
         voxels, num_points, coors = self.voxelize(points)
         voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors)
+        
         voxels, num_points, coors = self.voxelize(points_next)
         voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
         
@@ -233,25 +234,88 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of each branch.
         """
+        # initialize losses
+        chamfer_loss = torch.Tensor([0]).to(pts_feats.device)
+        # smooth_loss = torch.Tensor([0]).to(pts_feats.device)
+
+        # get predicted motion field
         pred_motion = self.motion_pred_head(pts_feats)
-        coor = voxelized_pc['coors'][:,2:4]
-        pind = coor[:,0] * self.pts_voxel_layer.grid_size[0] + coor[:,1]
-        pred_flat = pred_motion.view(-1,2)
-        delta_voxel = pred_flat[pind.long()] 
-        pred_voxel = voxelized_pc['voxels'].clone()
+        # import matplotlib.pyplot as plt
+        # m = pred_motion[0,:,:,:]
+        # m = pred_motion[0,:,:,:]
+        # from tools.optical_flow.flowlib import flow_to_image
+        # m = m.detach().cpu().numpy()
+        # img = flow_to_image(m)
+        # plt.imshow(img); plt.show()
+
+        batch_size = pred_motion.size(0)
+        coor = voxelized_pc['coors']
+
+         
+        # for batch_idx in range(batch_size):
+        #     batch_mask = torch.where(coor[:,0]==batch_idx)[0]
+        #     p = coor[batch_mask,2] * self.pts_voxel_layer.grid_size[0] + coor[batch_mask,2]
+        #     if batch_idx==0:
+        #         pind = p
+        #     else:
+        #         pind = torch.cat((pind, torch.add(p, torch.tensor([self.pts_voxel_layer.grid_size[0]* self.pts_voxel_layer.grid_size[1]]).to(p.device))))
+        # pred_flat = pred_motion.view(-1,2) #pred_motion[batch_idx,:,:,:].view(-1,2)
+        # delta_voxel = pred_flat[pind.long()] 
+        # pred_voxel = voxelized_pc['voxels'].clone()
         
-        # apply predicted motion to pc at t to get a predicted pc at t+1
-        pred_voxel[:,:,:2] = torch.add(pred_voxel[:,:,:2], delta_voxel[:,None,:]) # but this doesn't solve problem! all zeros have motion added to them! 
+        # # apply predicted motion to pc at t to get a predicted pc at t+1
+        # pred_voxel[:,:,:2] = torch.add(pred_voxel[:,:,:2], delta_voxel[:,None,:]) # but this doesn't solve problem! all zeros have motion added to them! 
 
-        # extract pc from voxelized_pc, calculate chamfer loss between predicted pc and actual pc at t+1
-        non_zero_mask = voxelized_pc['voxels'].view(-1,5).sum(dim=1) != 0
-        v = pred_voxel.view(-1,5)[non_zero_mask,:]
+        # # extract pc from voxelized_pc, calculate chamfer loss between predicted pc and actual pc at t+1
+        # non_zero_mask = voxelized_pc['voxels'].view(-1,5).sum(dim=1) != 0
+        # v = pred_voxel.view(-1,5)[non_zero_mask,:]
 
-        v_next = voxelized_pc_next['voxels'].view(-1,5)
-        v_next = v_next[v_next.sum(dim=1) != 0]
+        # v_next = voxelized_pc_next['voxels'].view(-1,5)
+        # v_next = v_next[v_next.sum(dim=1) != 0]
 
-        chamfer_loss = self.chamfer_dist(v[None,:,:], v_next[None,:,:], bidirectional=True)
-        losses = dict(chamfer_loss=chamfer_loss*1e-3)
+        # # # to visualize
+        # # v_original = voxelized_pc['voxels'].clone().view(-1,5)
+        # # v_original = v_original[v_original.sum(dim=1) != 0]
+        # # import open3d as o3d
+        # # pcd = o3d.geometry.PointCloud(); pcd.points = o3d.utility.Vector3dVector(v_original.cpu().numpy()[:,:3])
+        # # pcd_next = o3d.geometry.PointCloud(); pcd_next.points = o3d.utility.Vector3dVector(v_next.cpu().numpy()[:,:3]); pcd_next.paint_uniform_color([1, 0.706, 0])
+        # # pcd_pred = o3d.geometry.PointCloud(); pcd_pred.points = o3d.utility.Vector3dVector(v.detach().cpu().numpy()[:,:3]); pcd_pred.paint_uniform_color([1, 0, 0])
+        # # o3d.visualization.draw_geometries([pcd, pcd_pred])
+
+        # chamfer_loss = self.chamfer_dist(v[None,:,:], v_next[None,:,:], bidirectional=True)
+        # smooth_loss = torch.mean(torch.abs(pred_motion[:, 1:] - pred_motion[:, :-1])) + \
+        #               torch.mean(torch.abs(pred_motion[:, :, 1:] - pred_motion[:, :, :-1]))
+
+        
+        original_voxel = voxelized_pc['voxels'].clone()
+
+        for batch_idx in range(batch_size):
+            batch_mask = torch.where(coor[:,0]==batch_idx)[0]
+            pred_voxel=voxelized_pc['voxels'].clone()
+            # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
+            pred_voxel[batch_mask, :, :2] = torch.add(original_voxel[batch_mask,:,:2], pred_motion[batch_idx, coor[batch_mask,3].long(), coor[batch_mask,2].long(), None, :])
+            # extract pc from voxelized_pc
+            non_zero_mask = original_voxel[batch_mask].view(-1,5).sum(dim=1) != 0
+            v_pred = pred_voxel[batch_mask].view(-1,5)[non_zero_mask,:]
+            # NOTE or check: v_pred.size()[0] == torch.sum(voxelized_pc['num_points'][batch_mask])
+
+            batch_mask_next = torch.where(voxelized_pc_next['coors'][:,0]==batch_idx)[0]
+            v_next = voxelized_pc_next['voxels'][batch_mask_next].view(-1,5)
+            v_next=v_next[v_next.sum(dim=1) != 0]
+            # NOTE or check: v_next.size()[0] == torch.sum(voxelized_pc_next['num_points'][batch_mask_next])
+            # calculate chamfer loss between predicted pc and actual pc at t+1
+            chamfer_loss += self.chamfer_dist(v_pred[None,:,:], v_next[None,:,:], bidirectional=True)
+
+        # average for batch size
+        chamfer_loss /= batch_size
+        smooth_loss = torch.mean(torch.abs(2*pred_motion[:, 1:-1] -  pred_motion[:, :-2]- pred_motion[:, 2:])) + \
+             torch.mean(torch.abs(2*pred_motion[:, :, 1:-1] -  pred_motion[:, :, :-2]- pred_motion[:, :, 2:]))
+        
+
+        losses = dict(
+            chamfer_loss=chamfer_loss,
+            smooth_loss =smooth_loss
+            )
         # outs = self.pts_bbox_head(pts_feats)
         # loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
         # losses = self.pts_bbox_head.loss(*loss_inputs)
