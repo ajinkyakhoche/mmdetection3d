@@ -228,7 +228,18 @@ class LoadPointsFromMultiSweeps(object):
 
                 points = points.cat(sweep_points_list)
                 points = points[:, self.use_dim]
+                if pts == 'points_next':
+                    if all (k in results for k in ('T_ego2global_next','T_ego2global', 'T_lidar2ego')):
+                        points_np = points.tensor.numpy()
+                        points_np[:,:3] = transform_point_cloud(points_np[:,:3], results['T_lidar2ego'], results['T_ego2global'], results['T_ego2global_next'])
+                        points = points.new_point(points_np)
                 results[pts] = points
+        
+        ## check that delta transform is correct by visualizing
+        # import open3d as o3d
+        # pcd = o3d.geometry.PointCloud(); pcd.points = o3d.utility.Vector3dVector(results['points'].tensor.cpu().numpy()[:,:3])
+        # pcd_next = o3d.geometry.PointCloud(); pcd_next.points = o3d.utility.Vector3dVector(results['points_next'].tensor.cpu().numpy()[:,:3]); pcd_next.paint_uniform_color([1, 0.706, 0])
+        # o3d.visualization.draw_geometries([pcd, pcd_next])
         
         # load flow
         if 'flow_path' in results:
@@ -422,6 +433,12 @@ class LoadPointsFromFile(object):
                 points = self._load_points(pts_filename)
                 points = points.reshape(-1, self.load_dim)
                 points = points[:, self.use_dim]
+                # if val == 'points_next':
+                #     if all (k in results for k in ('T_ego2global_next','T_ego2global', 'T_lidar2ego')):
+                #         # delta_T = np.dot(np.linalg.inv(results['T_ego2global']), results['T_ego2global_next'])
+                #         # points[:,:3] = (np.linalg.inv(results['T_lidar2ego']) @ delta_T @ results['T_lidar2ego'] @ points[:,:4].T).T[:,:3]
+                #         points[:,:3] = transform_point_cloud(points[:,:3], results['T_lidar2ego'], results['T_ego2global'], results['T_ego2global_next'])
+
                 attribute_dims = None
 
                 if self.shift_height:
@@ -675,3 +692,11 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}with_bbox_depth={self.with_bbox_depth}, '
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
+
+def transform_point_cloud(pts, T_lidar2ego, T_ego2global, T_ego2global_next):
+    pts = np.copy(pts)
+    pts = np.vstack((pts.T, np.ones((pts.shape[0]))))
+    delta_T = np.dot(np.linalg.inv(T_ego2global), T_ego2global_next)
+    pts = (np.linalg.inv(T_lidar2ego) @ delta_T @ T_lidar2ego @ pts).T
+    return pts[:,:3]
+                
