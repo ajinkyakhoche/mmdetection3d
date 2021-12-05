@@ -9,6 +9,7 @@ from mmdet3d.core import VoxelGenerator
 from mmcv.runner import force_fp32
 from torch.nn import functional as F
 from chamferdist import ChamferDistance
+from mmdet3d.ops.render_pointcloud_in_image import map_pointcloud_to_image_torch, show_overlay
 
 """
 The below code is credited from the paper
@@ -152,12 +153,17 @@ class MotionNet(MVXTwoStageDetector):
                       points=None,
                       points_next=None,
                       flow=None,
+                      T_lidar2ego=None, 
+                      T_lidar2cam=None,
+                      img=None, 
+                      cam_intrinsic=None,
+                      cam_name=None,
+                      delta_T=None,
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
                       gt_labels=None,
                       gt_bboxes=None,
-                      img=None,
                       proposals=None,
                       gt_bboxes_ignore=None):
         """Forward training function.
@@ -196,7 +202,9 @@ class MotionNet(MVXTwoStageDetector):
         losses = dict()
         if pts_feats is not None:
             losses_pts = self.forward_pts_train(pts_feats, voxelized_pc, voxelized_pc_next,
-                                                flow, gt_bboxes_3d, gt_labels_3d, img_metas,
+                                                flow, T_lidar2ego, T_lidar2cam, img, cam_intrinsic,
+                                                cam_name, delta_T,
+                                                gt_bboxes_3d, gt_labels_3d, img_metas,
                                                 gt_bboxes_ignore)
             losses.update(losses_pts)
         if img_feats is not None:
@@ -215,6 +223,12 @@ class MotionNet(MVXTwoStageDetector):
                           voxelized_pc,
                           voxelized_pc_next,
                           flow,
+                          T_lidar2ego, 
+                          T_lidar2cam,
+                          img, 
+                          cam_intrinsic,
+                          cam_name,
+                          delta_T,
                           gt_bboxes_3d,
                           gt_labels_3d,
                           img_metas,
@@ -288,10 +302,15 @@ class MotionNet(MVXTwoStageDetector):
 
         
         original_voxel = voxelized_pc['voxels'].clone()
-
+            
         for batch_idx in range(batch_size):
             batch_mask = torch.where(coor[:,0]==batch_idx)[0]
             pred_voxel=voxelized_pc['voxels'].clone()
+            
+            # get original point cloud
+            v_original = voxelized_pc_next['voxels'][batch_mask].view(-1,5)
+            v_original=v_original[v_original.sum(dim=1) != 0]
+            
             # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
             pred_voxel[batch_mask, :, :2] = torch.add(original_voxel[batch_mask,:,:2], pred_motion[batch_idx, coor[batch_mask,3].long(), coor[batch_mask,2].long(), None, :])
             # extract pc from voxelized_pc
@@ -303,6 +322,16 @@ class MotionNet(MVXTwoStageDetector):
             v_next = voxelized_pc_next['voxels'][batch_mask_next].view(-1,5)
             v_next=v_next[v_next.sum(dim=1) != 0]
             # NOTE or check: v_next.size()[0] == torch.sum(voxelized_pc_next['num_points'][batch_mask_next])
+            
+            # optical flow loss
+            for camid in range(len(T_lidar2cam[0])):
+                print('')
+                pt_original, mask_original, color_original, _ = map_pointcloud_to_image_torch(v_original[:,:3], 
+                                                                                img.squeeze()[camid],
+                                                                                T_lidar2cam[0][camid],
+                                                                                cam_intrinsic[0][camid])
+                # show_overlay(pt_original.cpu().numpy(), mask_original.cpu().numpy(), 
+                # img.squeeze()[camid].permute(1,2,0).cpu().numpy(), color_original.cpu().numpy(), title='original')
             # calculate chamfer loss between predicted pc and actual pc at t+1
             chamfer_loss += self.chamfer_dist(v_pred[None,:,:], v_next[None,:,:], bidirectional=True)
 
