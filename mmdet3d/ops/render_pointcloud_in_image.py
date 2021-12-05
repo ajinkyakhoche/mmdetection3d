@@ -20,6 +20,7 @@ from matplotlib.axes import Axes
 from pyquaternion import Quaternion
 from tqdm import tqdm
 from PIL import Image
+import torch
 
 def render_pointcloud_in_image(#self,
                                 pointcloud,
@@ -39,7 +40,8 @@ def render_pointcloud_in_image(#self,
                                 verbose: bool = True,
                                 #    lidarseg_preds_bin_path: str = None,
                                 #    show_panoptic: bool = False
-                                min_dist = 1
+                                min_dist = 1,
+                                title : str = 'render_pointcloud_in_image' 
                                 ):
     """
     Scatter-plots a pointcloud on top of image.
@@ -81,7 +83,7 @@ def render_pointcloud_in_image(#self,
                                                         # show_panoptic=show_panoptic
                                                         )
     if verbose:
-        show_overlay(points, mask, im, coloring)
+        show_overlay(points, mask, im, coloring, title=title)
     return points[:2,:], mask, coloring 
 
 def show_overlay(points, 
@@ -99,7 +101,7 @@ def show_overlay(points,
         #     fig.canvas.set_window_title(sample_token + '(predictions)')
         # else:
         #     fig.canvas.set_window_title(sample_token)
-        fig.canvas.set_window_title('render_pointcloud_in_image')
+        fig.canvas.set_window_title(title)
     # else:  # Set title on if rendering as part of render_sample.
     #     ax.set_title(camera_channel)
     ax.imshow(im)
@@ -291,6 +293,58 @@ def map_pointcloud_to_image(#self,
 
     return points, mask, coloring, im
 
+def map_pointcloud_to_image_torch(#self,
+                                lidar_points, 
+                                im,
+                                T_lidar2cam,
+                                cam_intrinsic,                   
+                                # pointsensor_token: str,
+                                # camera_token: str,
+                                min_dist: float = 1.0,
+                                # render_intensity: bool = False,
+                                # show_lidarseg: bool = False,
+                                # filter_lidarseg_labels: List = None,
+                                # lidarseg_preds_bin_path: str = None,
+                                # show_panoptic: bool = False) -> Tuple:
+                                ):
+    """
+    """
+    
+    #im = Image.fromarray(im)
+    im = im.permute(2,1,0)
+    # points in lidar frame
+    # P_t_lidar = np.vstack((lidar_points.T, np.ones((lidar_points.shape[0]))))
+    P_t_lidar = torch.cat([lidar_points, torch.ones((lidar_points.size(0),1)).to(lidar_points.device)], dim=1)
+    P_t_lidar = P_t_lidar.T
+    # points in camera frame
+    # P_t_cam = (T_lidar2cam @ P_t_lidar)[:3,:]
+    P_t_cam = torch.mm(T_lidar2cam.float(), P_t_lidar)[:3,:] 
+    # # points in image frame
+    # P_t_img = cam_intrinsic @ P_t_cam
+    # pc = P_t_cam
+    depths = P_t_cam[2, :]
+
+    coloring = depths
+
+    # Take the actual picture (matrix multiplication with camera-matrix + renormalization).
+    # points = view_points(pc.points[:3, :], np.array(cs_record['camera_intrinsic']), normalize=True)
+    # points = view_points(pc, cam_intrinsic, normalize=True)
+    P_t_img = torch.mm(cam_intrinsic.float(), P_t_cam)
+    points = torch.divide(P_t_img[:2,:], P_t_img[2,:])
+
+    # Remove points that are either outside or behind the camera. Leave a margin of 1 pixel for aesthetic reasons.
+    # Also make sure points are at least 1m in front of the camera to avoid seeing the lidar points on the camera
+    # casing for non-keyframes which are slightly out of sync.
+    mask = torch.ones(depths.size(0), dtype=bool).to(points.device)
+    mask = torch.logical_and(mask, depths > min_dist)
+    mask = torch.logical_and(mask, points[0, :] > 1)
+    mask = torch.logical_and(mask, points[0, :] < im.size(0) - 1)
+    mask = torch.logical_and(mask, points[1, :] > 1)
+    mask = torch.logical_and(mask, points[1, :] < im.size(1) - 1)
+    # points = points[:, mask]
+    # coloring = coloring[mask]
+
+    return points, mask, coloring, im
 
 def view_points(points: np.ndarray, view: np.ndarray, normalize: bool) -> np.ndarray:
     """
