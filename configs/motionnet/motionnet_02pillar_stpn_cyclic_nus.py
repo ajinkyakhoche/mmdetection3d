@@ -6,13 +6,20 @@ _base_ = [
 
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
-point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0] #[-25.6, -51.2, -5.0, 25.6, 51.2, 3.0] 
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
-
+# Input modality for nuScenes dataset, this is consistent with the submission
+# format which requires the information in input_modality.
+input_modality = dict(
+    use_lidar=True,
+    use_camera=True,
+    use_radar=False,
+    use_map=False,
+    use_external=False)
 model = dict(
     pts_voxel_layer=dict(point_cloud_range=point_cloud_range),
     #pts_voxel_encoder=dict(point_cloud_range=point_cloud_range),
@@ -63,6 +70,7 @@ db_sampler = dict(
         file_client_args=file_client_args))
 
 train_pipeline = [
+    dict(type='LoadMultiViewImageFromFiles'),
     dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -71,7 +79,7 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=9,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -93,7 +101,8 @@ train_pipeline = [
     dict(type='ObjectNameFilter', classes=class_names),
     # dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
-    dict(type='Collect3D', keys=['points', 'points_next', 'gt_bboxes_3d', 'gt_labels_3d']) #'flow',
+    dict(type='Collect3D', keys=['points', 'points_next', 'flow', 'T_lidar2ego', 
+    'T_lidar2cam', 'img', 'cam_intrinsic', 'delta_T', 'gt_bboxes_3d', 'gt_labels_3d']) #'cam_name' is string and can't be converted to tensor,
     # dict(type='Collect3D', keys=['points'])
 ]
 test_pipeline = [
@@ -105,7 +114,7 @@ test_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=9,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -126,7 +135,7 @@ test_pipeline = [
                 type='DefaultFormatBundle3D',
                 class_names=class_names,
                 with_label=False),
-            dict(type='Collect3D', keys=['points'])
+            dict(type='Collect3D', keys=['points', 'points_next'])
         ])
 ]
 # construct a pipeline for data and gt loading in show function
@@ -140,7 +149,7 @@ eval_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=9,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -149,7 +158,7 @@ eval_pipeline = [
         type='DefaultFormatBundle3D',
         class_names=class_names,
         with_label=False),
-    dict(type='Collect3D', keys=['points'])
+    dict(type='Collect3D', keys=['points', 'points_next'])
 ]
 
 data = dict(
@@ -161,6 +170,7 @@ data = dict(
             ann_file=data_root + 'motion_mini/nus_5_sweeps_infos_train.pkl',
             pipeline=train_pipeline,
             classes=class_names,
+            modality=input_modality,
             test_mode=False,
             use_valid_flag=True,
             # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
