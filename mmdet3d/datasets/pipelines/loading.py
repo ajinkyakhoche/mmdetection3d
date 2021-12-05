@@ -231,8 +231,14 @@ class LoadPointsFromMultiSweeps(object):
                 if pts == 'points_next':
                     if all (k in results for k in ('T_ego2global_next','T_ego2global', 'T_lidar2ego')):
                         points_np = points.tensor.numpy()
-                        points_np[:,:3] = transform_point_cloud(points_np[:,:3], results['T_lidar2ego'], results['T_ego2global'], results['T_ego2global_next'])
+                        # points_np[:,:3] = transform_point_cloud(points_np[:,:3], results['T_lidar2ego'], results['T_ego2global'], results['T_ego2global_next'])
+                        pc = np.copy(points_np[:,:3])
+                        pc = np.vstack((pc.T, np.ones((pc.shape[0]))))
+                        delta_T = np.dot(np.linalg.inv(results['T_ego2global']), results['T_ego2global_next'])
+                        pc = (np.linalg.inv(results['T_lidar2ego']) @ delta_T @ results['T_lidar2ego'] @ pc).T
+                        points_np[:,:3] = pc[:,:3]
                         points = points.new_point(points_np)
+                        results['delta_T'] = delta_T
                 results[pts] = points
         
         ## check that delta transform is correct by visualizing
@@ -243,7 +249,7 @@ class LoadPointsFromMultiSweeps(object):
         
         # load flow
         if 'flow_path' in results:
-            results['flow'] = self._load_points(results['flow_path'])
+            results['flow'] = np.fromfile(results['flow_path'], dtype=np.float64).reshape([-1, 2])
         return results
 
     def __repr__(self):
@@ -692,11 +698,3 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}with_bbox_depth={self.with_bbox_depth}, '
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
-
-def transform_point_cloud(pts, T_lidar2ego, T_ego2global, T_ego2global_next):
-    pts = np.copy(pts)
-    pts = np.vstack((pts.T, np.ones((pts.shape[0]))))
-    delta_T = np.dot(np.linalg.inv(T_ego2global), T_ego2global_next)
-    pts = (np.linalg.inv(T_lidar2ego) @ delta_T @ T_lidar2ego @ pts).T
-    return pts[:,:3]
-                
