@@ -1,4 +1,6 @@
 number_past_scans = 5
+grid_size_x = 512
+grid_size_y = 512
 voxel_size = [0.2, 0.2, 8]
 model = dict(
     type='MotionNet',
@@ -13,7 +15,7 @@ model = dict(
         norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
         legacy=False),
     pts_middle_encoder=dict(
-        type='PointPillarsScatterTemporal', in_channels=64, output_shape=(number_past_scans, 512, 512)),
+        type='PointPillarsScatterTemporal', in_channels=64, output_shape=(number_past_scans, grid_size_x, grid_size_y)),
     # pts_backbone=dict(
     #     type='SECOND',
     #     in_channels=64,
@@ -67,7 +69,7 @@ model = dict(
     # model training and testing settings
     train_cfg=dict(
         pts=dict(
-            grid_size=[512, 512, 1],
+            grid_size=[grid_size_x, grid_size_y, 1], #[512, 512, 1],
             voxel_size=voxel_size,
             out_size_factor=4,
             dense_reg=1,
