@@ -436,7 +436,11 @@ class LoadPointsFromFile(object):
         for key, val in {'pts_filename':'points', 'pts_filename_next':'points_next'}.items():
             if key in results:
                 pts_filename = results[key]
-                points = self._load_points(pts_filename)
+                try:
+                    points = self._load_points(pts_filename)
+                except:
+                    print("1111111111111111111111 SKIP the file,", pts_filename)
+                    return None
                 points = points.reshape(-1, self.load_dim)
                 points = points[:, self.use_dim]
                 # if val == 'points_next':
