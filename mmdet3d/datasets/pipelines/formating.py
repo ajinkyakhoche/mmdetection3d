@@ -212,7 +212,7 @@ class DefaultFormatBundle3D(DefaultFormatBundle):
             assert isinstance(results['points_next'], BasePoints)
             results['points_next'] = DC(results['points_next'].tensor)
 
-        for key in ['voxels', 'coors', 'voxel_centers', 'num_points']:
+        for key in ['voxels', 'coors', 'voxel_centers', 'num_points', 'flow']:
             if key not in results:
                 continue
             results[key] = DC(to_tensor(results[key]), stack=False)
