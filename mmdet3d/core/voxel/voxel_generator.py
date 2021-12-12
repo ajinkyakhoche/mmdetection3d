@@ -123,22 +123,23 @@ def points_to_voxel(points,
     # coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
     # add another dimension to coors, for time diff
     coors = np.zeros(shape=(max_voxels, 4), dtype=np.int32)
+    pt_in_voxel_mask = np.zeros(shape=(points.shape[0], ), dtype=bool)
     if reverse_index:
         voxel_num = _points_to_voxel_reverse_kernel(
             points, voxel_size, coors_range, num_points_per_voxel,
-            coor_to_voxelidx, voxels, coors, max_points, max_voxels)
+            coor_to_voxelidx, voxels, coors, pt_in_voxel_mask, max_points, max_voxels)
 
     else:
         voxel_num = _points_to_voxel_kernel(points, voxel_size, coors_range,
                                             num_points_per_voxel,
-                                            coor_to_voxelidx, voxels, coors,
+                                            coor_to_voxelidx, voxels, coors, pt_in_voxel_mask,
                                             max_points, max_voxels)
 
     coors = coors[:voxel_num]
     voxels = voxels[:voxel_num]
     num_points_per_voxel = num_points_per_voxel[:voxel_num]
 
-    return voxels, coors, num_points_per_voxel
+    return voxels, coors, num_points_per_voxel, pt_in_voxel_mask
 
 
 @numba.jit(nopython=True)
@@ -149,6 +150,7 @@ def _points_to_voxel_reverse_kernel(points,
                                     coor_to_voxelidx,
                                     voxels,
                                     coors,
+                                    pt_in_voxel_mask,
                                     max_points=35,
                                     max_voxels=20000):
     """convert kitti points(N, >=3) to voxels.
@@ -202,7 +204,7 @@ def _points_to_voxel_reverse_kernel(points,
             coor[ndim_minus_1 - j] = c  # zyx
             # TODO: this is probably incorrect. this will cause all sweeps to have 0th
             # dim for time diff. 
-            coor[3] = int(points[i, -1]) 
+            coor[3] = int(points[i, -1])
         if failed:
             continue
         # voxelidx = coor_to_voxelidx[coor[0], coor[1], coor[2]]
@@ -218,6 +220,7 @@ def _points_to_voxel_reverse_kernel(points,
         num = num_points_per_voxel[voxelidx]
         if num < max_points:
             voxels[voxelidx, num] = points[i]
+            pt_in_voxel_mask[i] = True                
             num_points_per_voxel[voxelidx] += 1
     return voxel_num
 
@@ -230,6 +233,7 @@ def _points_to_voxel_kernel(points,
                             coor_to_voxelidx,
                             voxels,
                             coors,
+                            pt_in_voxel_mask,
                             max_points=35,
                             max_voxels=20000):
     """convert kitti points(N, >=3) to voxels.
@@ -290,5 +294,6 @@ def _points_to_voxel_kernel(points,
         num = num_points_per_voxel[voxelidx]
         if num < max_points:
             voxels[voxelidx, num] = points[i]
+            pt_in_voxel_mask[i] = True                            
             num_points_per_voxel[voxelidx] += 1
     return voxel_num

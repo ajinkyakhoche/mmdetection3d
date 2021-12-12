@@ -5,7 +5,8 @@ import numpy as np
 from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
-
+import os
+from PIL import Image
 
 @PIPELINES.register_module()
 class LoadMultiViewImageFromFiles(object):
@@ -61,6 +62,20 @@ class LoadMultiViewImageFromFiles(object):
             mean=np.zeros(num_channels, dtype=np.float32),
             std=np.ones(num_channels, dtype=np.float32),
             to_rgb=False)
+
+        # read optical flow images
+        if 'flow_img_u_path' in results and 'flow_img_v_path' in results:
+            if len(results['flow_img_u_path'])!= 0 and len(results['flow_img_v_path'])!=0:
+                img_width = img.shape[1]
+                img_height = img.shape[0]
+                flo_u = [np.array(Image.open(name)).astype(np.float32) for name in results['flow_img_u_path']]
+                flo_u = [f - img_width for f in flo_u]
+                flo_v = [np.array(Image.open(name)).astype(np.float32) for name in results['flow_img_v_path']]
+                flo_v = [f - img_height for f in flo_v]
+                flo_list = [np.stack((f_u, f_v), axis=-1) for f_u, f_v in zip(flo_u, flo_v)]
+                flo = np.stack(flo_list, axis=-1) 
+                results['flow_img'] = [flo[..., i] for i in range(flo.shape[-1])]
+        
         return results
 
     def __repr__(self):
@@ -197,6 +212,8 @@ class LoadPointsFromMultiSweeps(object):
                 points = results[pts]
                 points.tensor[:, 4] = 0
                 sweep_points_list = [points]
+                # sweep_flow_list = [results['flow']]
+
                 ts = results[tstamp]
                 if self.pad_empty_sweeps and len(results[swp]) == 0:
                     for i in range(self.sweeps_num):
@@ -226,6 +243,11 @@ class LoadPointsFromMultiSweeps(object):
                         points_sweep = points.new_point(points_sweep)
                         sweep_points_list.append(points_sweep)
 
+                        # if 'flow_path' in results:
+                        #     sweep_flow_path = os.path.join('/'.join(results['flow_path'].split('/')[:-1]), sweep['data_path'].split('/')[-1])
+                        #     sweep_flow = np.fromfile(sweep_flow_path, dtype=np.float64).reshape([-1, 2])
+                        #     sweep_flow_list.append(sweep_flow)
+
                 points = points.cat(sweep_points_list)
                 points = points[:, self.use_dim]
                 if pts == 'points_next':
@@ -240,6 +262,9 @@ class LoadPointsFromMultiSweeps(object):
                         points = points.new_point(points_np)
                         results['delta_T'] = delta_T
                 results[pts] = points
+
+                # if pts == 'points':
+                #     results['flow'] = np.concatenate(sweep_flow_list)
         
         ## check that delta transform is correct by visualizing
         # import open3d as o3d
@@ -247,9 +272,6 @@ class LoadPointsFromMultiSweeps(object):
         # pcd_next = o3d.geometry.PointCloud(); pcd_next.points = o3d.utility.Vector3dVector(results['points_next'].tensor.cpu().numpy()[:,:3]); pcd_next.paint_uniform_color([1, 0.706, 0])
         # o3d.visualization.draw_geometries([pcd, pcd_next])
         
-        # load flow
-        if 'flow_path' in results:
-            results['flow'] = np.fromfile(results['flow_path'], dtype=np.float64).reshape([-1, 2])
         return results
 
     def __repr__(self):
@@ -474,7 +496,10 @@ class LoadPointsFromFile(object):
                 points = points_class(
                     points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
                 results[val] = points
-
+        
+        # load flow
+        if 'flow_path' in results:
+            results['flow'] = np.fromfile(results['flow_path'], dtype=np.float32).reshape([-1, 2])
         return results
 
     def __repr__(self):

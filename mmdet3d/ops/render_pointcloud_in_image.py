@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from typing import Tuple, List, Iterable
 
-import cv2
+import mmcv
 import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
@@ -37,7 +37,7 @@ def render_pointcloud_in_image(#self,
                                 #    filter_lidarseg_labels: List = None,
                                 # ax: Axes = None,
                                 #    show_lidarseg_legend: bool = False,
-                                verbose: bool = True,
+                                verbose: bool = False,
                                 #    lidarseg_preds_bin_path: str = None,
                                 #    show_panoptic: bool = False
                                 min_dist = 1,
@@ -104,6 +104,7 @@ def show_overlay(points,
         fig.canvas.set_window_title(title)
     # else:  # Set title on if rendering as part of render_sample.
     #     ax.set_title(camera_channel)
+    im = mmcv.bgr2rgb(im)
     ax.imshow(im)
     ax.scatter(points[0, mask], points[1, mask], c=coloring[mask], s=dot_size)
     ax.axis('off')
@@ -317,7 +318,6 @@ def map_pointcloud_to_image_torch(#self,
     P_t_lidar = torch.cat([lidar_points, torch.ones((lidar_points.size(0),1)).to(lidar_points.device)], dim=1)
     P_t_lidar = P_t_lidar.T
     # points in camera frame
-    # P_t_cam = (T_lidar2cam @ P_t_lidar)[:3,:]
     P_t_cam = torch.mm(T_lidar2cam.float(), P_t_lidar)[:3,:] 
     # # points in image frame
     # P_t_img = cam_intrinsic @ P_t_cam

@@ -79,11 +79,11 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=4,
+        sweeps_num=0,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     # dict(type='ObjectSample', db_sampler=db_sampler),
     # dict(
@@ -96,8 +96,8 @@ train_pipeline = [
     #     sync_2d=False,
     #     flip_ratio_bev_horizontal=0.5,
     #     flip_ratio_bev_vertical=0.5),
-    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    # dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
+    # dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     # dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
@@ -114,11 +114,11 @@ test_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=4,
+        sweeps_num=0,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -149,11 +149,11 @@ eval_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=4,
+        sweeps_num=0,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(
         type='DefaultFormatBundle3D',
         class_names=class_names,
@@ -167,7 +167,7 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
-            ann_file=data_root + 'motion_mini/nus_5_sweeps_infos_train.pkl',
+            ann_file=data_root + 'motion_trainval/nus_5_sweeps_infos_train.pkl',
             pipeline=train_pipeline,
             classes=class_names,
             modality=input_modality,
