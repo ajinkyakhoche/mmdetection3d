@@ -134,20 +134,18 @@ class MotionNet(MVXTwoStageDetector):
             tuple[torch.Tensor]: Concatenated points, number of points
                 per voxel, and coordinates.
         """
-        voxels, coors, num_points = [], [], []
+        voxels, coors, num_points, pt_in_voxel_mask = [], [], [], []
         for res in points:
-            res_voxels, res_coors, res_num_points = self.pts_voxel_layer.generate(res.cpu().numpy())
+            res_voxels, res_coors, res_num_points, res_pt_in_voxel_mask = self.pts_voxel_layer.generate(res.cpu().numpy())
             voxels.append(torch.from_numpy(res_voxels).to(res.device))
             coors.append(torch.from_numpy(res_coors).to(res.device))
             num_points.append(torch.from_numpy(res_num_points).to(res.device))
-        voxels = torch.cat(voxels, dim=0)
-        num_points = torch.cat(num_points, dim=0)
+            pt_in_voxel_mask.append(torch.from_numpy(res_pt_in_voxel_mask).to(res.device))
         coors_batch = []
         for i, coor in enumerate(coors):
             coor_pad = F.pad(coor, (1, 0), mode='constant', value=i)
             coors_batch.append(coor_pad)
-        coors_batch = torch.cat(coors_batch, dim=0)
-        return voxels, num_points, coors_batch
+        return voxels, num_points, coors_batch, pt_in_voxel_mask
 
     def forward_train(self,
                       points=None,
@@ -191,8 +189,8 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of different branches.
         """
-        voxels, num_points, coors = self.voxelize(points)
-        voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors)
+        voxels, num_points, coors, pt_in_voxel_mask = self.voxelize(points)
+        voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors, pt_in_voxel_mask=pt_in_voxel_mask)
         
         voxels, num_points, coors = self.voxelize(points_next)
         voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
