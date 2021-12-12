@@ -83,7 +83,7 @@ train_pipeline = [
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     # dict(type='ObjectSample', db_sampler=db_sampler),
     # dict(
@@ -118,7 +118,7 @@ test_pipeline = [
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -153,7 +153,7 @@ eval_pipeline = [
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
-        remove_close=True),
+        remove_close=False),
     dict(
         type='DefaultFormatBundle3D',
         class_names=class_names,
