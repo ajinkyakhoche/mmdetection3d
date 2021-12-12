@@ -141,10 +141,14 @@ class MotionNet(MVXTwoStageDetector):
             coors.append(torch.from_numpy(res_coors).to(res.device))
             num_points.append(torch.from_numpy(res_num_points).to(res.device))
             pt_in_voxel_mask.append(torch.from_numpy(res_pt_in_voxel_mask).to(res.device))
+        # voxels = torch.cat(voxels, dim=0)
+        # num_points = torch.cat(num_points, dim=0)
+        # pt_in_voxel_mask = torch.cat(pt_in_voxel_mask, dim=0)
         coors_batch = []
         for i, coor in enumerate(coors):
             coor_pad = F.pad(coor, (1, 0), mode='constant', value=i)
             coors_batch.append(coor_pad)
+        # coors_batch = torch.cat(coors_batch, dim=0)
         return voxels, num_points, coors_batch, pt_in_voxel_mask
 
     def forward_train(self,
@@ -192,14 +196,17 @@ class MotionNet(MVXTwoStageDetector):
         voxels, num_points, coors, pt_in_voxel_mask = self.voxelize(points)
         voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors, pt_in_voxel_mask=pt_in_voxel_mask)
         
-        voxels, num_points, coors = self.voxelize(points_next)
-        voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
+        # voxels, num_points, coors = self.voxelize(points_next)
+        # voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
         
+        # img_feats, pts_feats = self.extract_feat(
+        #     voxelized_pc, img=img, img_metas=img_metas)
         img_feats, pts_feats = self.extract_feat(
-            voxelized_pc, img=img, img_metas=img_metas)
+            {key:torch.cat(value, dim=0) for (key,value) in voxelized_pc.items()}, img=img, img_metas=img_metas)
+        
         losses = dict()
         if pts_feats is not None:
-            losses_pts = self.forward_pts_train(pts_feats, voxelized_pc, voxelized_pc_next,
+            losses_pts = self.forward_pts_train(pts_feats, points, points_next, voxelized_pc, #voxelized_pc_next,
                                                 flow, T_lidar2ego, T_lidar2cam, img, cam_intrinsic,
                                                 cam_name, delta_T,
                                                 gt_bboxes_3d, gt_labels_3d, img_metas,
@@ -218,8 +225,10 @@ class MotionNet(MVXTwoStageDetector):
 
     def forward_pts_train(self,
                           pts_feats,
+                          points,
+                          points_next,
                           voxelized_pc,
-                          voxelized_pc_next,
+                        #   voxelized_pc_next,
                           flow,
                           T_lidar2ego, 
                           T_lidar2cam,
