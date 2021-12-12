@@ -309,7 +309,8 @@ class MotionNet(MVXTwoStageDetector):
             # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
             pred_voxel[:,:,:2] = torch.add(original_voxel[batch_idx][:,:,:2], pred_motion[batch_idx, coor[:,3].long(), coor[:,2].long(), None, :])
             # extract pc from pred_voxel
-            non_zero_mask = original_voxel[batch_idx].view(-1,5).sum(dim=1) != 0
+            # non_zero_mask = original_voxel[batch_idx].view(-1,5).sum(dim=1) != 0
+            non_zero_mask = (original_voxel[batch_idx].view(-1,5) != 0).sum(dim=1) >0
             points_pred = pred_voxel.view(-1,5)[non_zero_mask,:]
 
             delta = delta_T[batch_idx]
