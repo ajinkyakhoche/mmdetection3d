@@ -10,6 +10,7 @@ from mmcv.runner import force_fp32
 from torch.nn import functional as F
 from chamferdist import ChamferDistance
 from mmdet3d.ops.render_pointcloud_in_image import map_pointcloud_to_image_torch, show_overlay
+from tools.optical_flow.flowlib import flow_to_image, dispOpticalFlow
 
 """
 The below code is credited from the paper
@@ -161,6 +162,7 @@ class MotionNet(MVXTwoStageDetector):
                       cam_intrinsic=None,
                       cam_name=None,
                       delta_T=None,
+                    #   flow_img=None,
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
@@ -208,7 +210,7 @@ class MotionNet(MVXTwoStageDetector):
         if pts_feats is not None:
             losses_pts = self.forward_pts_train(pts_feats, points, points_next, voxelized_pc, #voxelized_pc_next,
                                                 flow, T_lidar2ego, T_lidar2cam, img, cam_intrinsic,
-                                                cam_name, delta_T,
+                                                cam_name, delta_T, #flow_img,
                                                 gt_bboxes_3d, gt_labels_3d, img_metas,
                                                 gt_bboxes_ignore)
             losses.update(losses_pts)
@@ -236,6 +238,7 @@ class MotionNet(MVXTwoStageDetector):
                           cam_intrinsic,
                           cam_name,
                           delta_T,
+                        #   flow_img,
                           gt_bboxes_3d,
                           gt_labels_3d,
                           img_metas,
@@ -257,7 +260,7 @@ class MotionNet(MVXTwoStageDetector):
         """
         # initialize losses
         chamfer_loss = torch.Tensor([0]).to(pts_feats.device)
-        # smooth_loss = torch.Tensor([0]).to(pts_feats.device)
+        optical_flow_loss = torch.Tensor([0]).to(pts_feats.device)
 
         # get predicted motion field
         pred_motion = self.motion_pred_head(pts_feats)
@@ -270,90 +273,134 @@ class MotionNet(MVXTwoStageDetector):
         # plt.imshow(img); plt.show()
 
         batch_size = pred_motion.size(0)
-        coor = voxelized_pc['coors']
+        # coor = voxelized_pc['coors']
+        # pt_in_voxel_mask_batch = voxelized_pc['pt_in_voxel_mask']
 
-         
-        # for batch_idx in range(batch_size):
-        #     batch_mask = torch.where(coor[:,0]==batch_idx)[0]
-        #     p = coor[batch_mask,2] * self.pts_voxel_layer.grid_size[0] + coor[batch_mask,2]
-        #     if batch_idx==0:
-        #         pind = p
-        #     else:
-        #         pind = torch.cat((pind, torch.add(p, torch.tensor([self.pts_voxel_layer.grid_size[0]* self.pts_voxel_layer.grid_size[1]]).to(p.device))))
-        # pred_flat = pred_motion.view(-1,2) #pred_motion[batch_idx,:,:,:].view(-1,2)
-        # delta_voxel = pred_flat[pind.long()] 
-        # pred_voxel = voxelized_pc['voxels'].clone()
-        
-        # # apply predicted motion to pc at t to get a predicted pc at t+1
-        # pred_voxel[:,:,:2] = torch.add(pred_voxel[:,:,:2], delta_voxel[:,None,:]) # but this doesn't solve problem! all zeros have motion added to them! 
-
-        # # extract pc from voxelized_pc, calculate chamfer loss between predicted pc and actual pc at t+1
-        # non_zero_mask = voxelized_pc['voxels'].view(-1,5).sum(dim=1) != 0
-        # v = pred_voxel.view(-1,5)[non_zero_mask,:]
-
-        # v_next = voxelized_pc_next['voxels'].view(-1,5)
-        # v_next = v_next[v_next.sum(dim=1) != 0]
-
-        # # # to visualize
-        # # v_original = voxelized_pc['voxels'].clone().view(-1,5)
-        # # v_original = v_original[v_original.sum(dim=1) != 0]
-        # # import open3d as o3d
-        # # pcd = o3d.geometry.PointCloud(); pcd.points = o3d.utility.Vector3dVector(v_original.cpu().numpy()[:,:3])
-        # # pcd_next = o3d.geometry.PointCloud(); pcd_next.points = o3d.utility.Vector3dVector(v_next.cpu().numpy()[:,:3]); pcd_next.paint_uniform_color([1, 0.706, 0])
-        # # pcd_pred = o3d.geometry.PointCloud(); pcd_pred.points = o3d.utility.Vector3dVector(v.detach().cpu().numpy()[:,:3]); pcd_pred.paint_uniform_color([1, 0, 0])
-        # # o3d.visualization.draw_geometries([pcd, pcd_pred])
-
-        # chamfer_loss = self.chamfer_dist(v[None,:,:], v_next[None,:,:], bidirectional=True)
-        # smooth_loss = torch.mean(torch.abs(pred_motion[:, 1:] - pred_motion[:, :-1])) + \
-        #               torch.mean(torch.abs(pred_motion[:, :, 1:] - pred_motion[:, :, :-1]))
-
-        
-        original_voxel = voxelized_pc['voxels'].clone()
+        # original_voxel = voxelized_pc['voxels'].clone()
+        original_voxel = [v.clone() for v in voxelized_pc['voxels']]
             
         for batch_idx in range(batch_size):
-            batch_mask = torch.where(coor[:,0]==batch_idx)[0]
-            pred_voxel=voxelized_pc['voxels'].clone()
+            # batch_mask = torch.where(coor[:,0]==batch_idx)[0]
+            # pred_voxel=voxelized_pc['voxels'].clone()
             
-            # get original point cloud
-            v_original = voxelized_pc_next['voxels'][batch_mask].view(-1,5)
-            v_original=v_original[v_original.sum(dim=1) != 0]
+            # pt_in_voxel_mask = pt_in_voxel_mask_batch[batch_idx]
+            # # # get original point cloud
+            # # v_original = voxelized_pc['voxels'][batch_mask].view(-1,5)
+            # # v_original=v_original[v_original.sum(dim=1) != 0]
             
-            # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
-            pred_voxel[batch_mask, :, :2] = torch.add(original_voxel[batch_mask,:,:2], pred_motion[batch_idx, coor[batch_mask,3].long(), coor[batch_mask,2].long(), None, :])
-            # extract pc from voxelized_pc
-            non_zero_mask = original_voxel[batch_mask].view(-1,5).sum(dim=1) != 0
-            v_pred = pred_voxel[batch_mask].view(-1,5)[non_zero_mask,:]
-            # NOTE or check: v_pred.size()[0] == torch.sum(voxelized_pc['num_points'][batch_mask])
+            # # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
+            # pred_voxel[batch_mask, :, :2] = torch.add(original_voxel[batch_mask,:,:2], pred_motion[batch_idx, coor[batch_mask,3].long(), coor[batch_mask,2].long(), None, :])
+            # # extract pc from voxelized_pc
+            # non_zero_mask = original_voxel[batch_mask].view(-1,5).sum(dim=1) != 0
+            # points_pred = pred_voxel[batch_mask].view(-1,5)[non_zero_mask,:]
+            # # NOTE or check: points_pred.size()[0] == torch.sum(voxelized_pc['num_points'][batch_mask])
 
-            batch_mask_next = torch.where(voxelized_pc_next['coors'][:,0]==batch_idx)[0]
-            v_next = voxelized_pc_next['voxels'][batch_mask_next].view(-1,5)
-            v_next=v_next[v_next.sum(dim=1) != 0]
-            # NOTE or check: v_next.size()[0] == torch.sum(voxelized_pc_next['num_points'][batch_mask_next])
+            # # batch_mask_next = torch.where(voxelized_pc_next['coors'][:,0]==batch_idx)[0]
+            # # v_next = voxelized_pc_next['voxels'][batch_mask_next].view(-1,5)
+            # # v_next=v_next[v_next.sum(dim=1) != 0]
+            # # # NOTE or check: v_next.size()[0] == torch.sum(voxelized_pc_next['num_points'][batch_mask_next])
             
+            coor = voxelized_pc['coors'][batch_idx]
+            pt_in_voxel_mask = voxelized_pc['pt_in_voxel_mask'][batch_idx]
+            
+            # pred_voxel = [v.clone() for v in voxelized_pc['voxels']]
+            pred_voxel = voxelized_pc['voxels'][batch_idx].clone()
+
+            # apply predicted motion to voxelized pc at t to get a predicted pc at t+1
+            pred_voxel[:,:,:2] = torch.add(original_voxel[batch_idx][:,:,:2], pred_motion[batch_idx, coor[:,3].long(), coor[:,2].long(), None, :])
+            # extract pc from pred_voxel
+            non_zero_mask = original_voxel[batch_idx].view(-1,5).sum(dim=1) != 0
+            points_pred = pred_voxel.view(-1,5)[non_zero_mask,:]
+
+            delta = delta_T[batch_idx]
+            lidar2ego = T_lidar2ego[batch_idx]
             # optical flow loss
+            F_t = flow[batch_idx][pt_in_voxel_mask,:].float().T
+                
             for camid in range(len(T_lidar2cam[0])):
-                print('')
-                pt_original, mask_original, color_original, _ = map_pointcloud_to_image_torch(v_original[:,:3], 
-                                                                                img.squeeze()[camid],
-                                                                                T_lidar2cam[0][camid],
-                                                                                cam_intrinsic[0][camid])
+                # set filtering dist to remove ego vehicle points for CAM_FRONT projection  
+                min_dist = 8.0 if camid==0 else 1.0
+                pt_original, mask_original, color_original, _ = map_pointcloud_to_image_torch(points[batch_idx][pt_in_voxel_mask,:3], 
+                                                                                img[batch_idx][camid],
+                                                                                T_lidar2cam[batch_idx][camid],
+                                                                                cam_intrinsic[batch_idx][camid])
                 # show_overlay(pt_original.cpu().numpy(), mask_original.cpu().numpy(), 
-                # img.squeeze()[camid].permute(1,2,0).cpu().numpy(), color_original.cpu().numpy(), title='original')
+                # img[batch_idx][camid].permute(1,2,0).cpu().numpy(), color_original.cpu().numpy(), title='original')
+                pt_pred, mask_pred, color_pred, _ = map_pointcloud_to_image_torch(points_pred[:,:3], 
+                                                                                img[batch_idx][camid],
+                                                                                T_lidar2cam[batch_idx][camid],
+                                                                                cam_intrinsic[batch_idx][camid])
+                # show_overlay(pt_pred.detach().cpu().numpy(), mask_pred.cpu().numpy(), 
+                # img[batch_idx][camid].permute(1,2,0).cpu().numpy(), color_pred.detach().cpu().numpy(), title='pred')
+                
+                T_lidar2nextcam = T_lidar2cam[batch_idx][camid] @ torch.inverse(lidar2ego) @ delta @ lidar2ego
+                pt_shifted, mask_shifted, color_shifted, _ = map_pointcloud_to_image_torch(points[batch_idx][pt_in_voxel_mask,:3], 
+                                                                                img[batch_idx][camid],
+                                                                                T_lidar2nextcam,
+                                                                                cam_intrinsic[batch_idx][camid],
+                                                                                min_dist=min_dist)
+                # show_overlay(pt_shifted.detach().cpu().numpy(), mask_shifted.cpu().numpy(), 
+                # img[batch_idx][camid].permute(1,2,0).cpu().numpy(), color_shifted.detach().cpu().numpy(), title='next')
+                F_t_pred  = torch.zeros_like(pt_original)                
+                F_t_pred[:, mask_original&mask_pred] = pt_original[:, mask_original&mask_pred] - pt_pred[:, mask_original&mask_pred]
+
+                F_t_ego = torch.zeros_like(pt_original)
+                F_t_obj = torch.zeros_like(pt_original)
+                
+                pt_original_round = torch.round(pt_original).long()
+
+                # F_t = torch.zeros_like(pt_original)
+                # F_t_img = flow_img[batch_idx][camid]
+                # F_t[:, mask_original&mask_shifted] = F_t_img[pt_original_round[1, mask_original&mask_shifted], pt_original_round[0, mask_original&mask_shifted]].T
+                
+                F_t_ego[:, mask_original&mask_shifted] = pt_shifted[:, mask_original&mask_shifted] - pt_original[:, mask_original&mask_shifted]
+                F_t_obj[:, mask_original&mask_shifted] = F_t[:, mask_original&mask_shifted] + F_t_ego[:, mask_original&mask_shifted]
+
+                mask_common = mask_original&mask_pred&mask_shifted
+                optical_flow_loss += torch.sum(torch.abs(F_t_pred[:,mask_common] + F_t_obj[:,mask_common]))
+
+                # # Visualize optical flow
+                # im = img[batch_idx][camid].permute(1,2,0)
+                # flo_obj = torch.zeros_like(im[:,:,:2], dtype=torch.float)            
+                # flo_obj[pt_original_round[1, mask_original&mask_shifted], pt_original_round[0, mask_original&mask_shifted]] =  F_t_obj[:, mask_original&mask_shifted].T
+                # dispOpticalFlow(im.cpu().numpy().copy(), flo_obj.cpu().numpy(), Divisor=4)
+                
+                # flo_ego = torch.zeros_like(im[:,:,:2], dtype=torch.float)            
+                # flo_ego[pt_original_round[1, mask_original&mask_shifted], pt_original_round[0, mask_original&mask_shifted]] =  F_t_ego[:, mask_original&mask_shifted].T
+                # dispOpticalFlow(im.cpu().numpy().copy(), flo_ego.cpu().numpy(), Divisor=4)
+                
+                # flo = torch.zeros_like(im[:,:,:2], dtype=torch.float)            
+                # flo[pt_original_round[1, mask_original&mask_shifted], pt_original_round[0, mask_original&mask_shifted]] =  F_t[:, mask_original&mask_shifted].T
+                # dispOpticalFlow(im.cpu().numpy().copy(), flo.cpu().numpy(), Divisor=4)
+                
+                # # dispOpticalFlow_torch(img[batch_idx][camid].permute(1,2,0), F_t_obj, pt_original_round, mask_original&mask_shifted)
+                # dispOpticalFlow(im.cpu().numpy().copy(), F_t_img.cpu().numpy(), Divisor=20)
+
+            # average for all cameras
+            optical_flow_loss /= len(T_lidar2cam[0])
+            
             # calculate chamfer loss between predicted pc and actual pc at t+1
-            chamfer_loss += self.chamfer_dist(v_pred[None,:,:], v_next[None,:,:], bidirectional=True)
+            chamfer_loss += self.chamfer_dist(points_pred[None,:,:], points_next[batch_idx][None,:,:], bidirectional=True)
 
         # average for batch size
         chamfer_loss /= batch_size
+        optical_flow_loss /= batch_size
+        
         smooth_loss = torch.mean(torch.abs(2*pred_motion[:, 1:-1] -  pred_motion[:, :-2]- pred_motion[:, 2:])) + \
              torch.mean(torch.abs(2*pred_motion[:, :, 1:-1] -  pred_motion[:, :, :-2]- pred_motion[:, :, 2:]))
         
 
         losses = dict(
             chamfer_loss=chamfer_loss,
-            smooth_loss =smooth_loss
+            smooth_loss =smooth_loss,
+            optical_flow_loss=optical_flow_loss
             )
-        # outs = self.pts_bbox_head(pts_feats)
-        # loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
-        # losses = self.pts_bbox_head.loss(*loss_inputs)
+        
         return losses
 
+def dispOpticalFlow_torch(im, F, pt_original_round, mask, divisor=2):
+    # im = img[batch_idx][camid].permute(1,2,0)
+    flo = torch.zeros_like(im[:,:,:2], dtype=torch.float)            
+    flo[pt_original_round[1, mask], pt_original_round[0, mask]] =  F[:, mask].T
+    dispOpticalFlow(im.cpu().numpy().copy(), flo.cpu().numpy().copy(), Divisor=divisor)
+                
