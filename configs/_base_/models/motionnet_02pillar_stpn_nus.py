@@ -1,7 +1,7 @@
 number_past_scans = 5
-grid_size_x = 512
-grid_size_y = 512
-voxel_size = [0.2, 0.2, 8]
+grid_size_x = 256
+grid_size_y = 256
+voxel_size = [0.25, 0.25, 8]
 model = dict(
     type='MotionNet',
     pts_voxel_layer=dict(
@@ -11,7 +11,8 @@ model = dict(
         in_channels=5,
         feat_channels=[64],
         with_distance=False,
-        voxel_size=(0.2, 0.2, 8),
+        with_cluster_center=True,
+        voxel_size=voxel_size,#(0.2, 0.2, 8),
         norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
         legacy=False),
     pts_middle_encoder=dict(
