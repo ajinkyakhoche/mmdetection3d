@@ -6,7 +6,7 @@ _base_ = [
 
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
-point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0] #[-25.6, -51.2, -5.0, 25.6, 51.2, 3.0] 
+point_cloud_range = [-32.0, -32.0, -5.0, 32.0, 32.0, 3.0] #[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]  
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
@@ -79,7 +79,7 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=0,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -101,8 +101,8 @@ train_pipeline = [
     dict(type='ObjectNameFilter', classes=class_names),
     # dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
-    dict(type='Collect3D', keys=['points', 'points_next', 'flow', 'T_lidar2ego', 
-    'T_lidar2cam', 'img', 'cam_intrinsic', 'delta_T', 'gt_bboxes_3d', 'gt_labels_3d']) #'cam_name' is string and can't be converted to tensor,
+    dict(type='Collect3D', keys=['points', 'points_next', 'points_sweeps', 'flow', 'T_lidar2ego', 
+    'T_lidar2cam', 'img', 'cam_intrinsic', 'delta_T', 'gt_bboxes_3d', 'gt_labels_3d']) # 'flow_img','cam_name' is string and can't be converted to tensor,
     # dict(type='Collect3D', keys=['points'])
 ]
 test_pipeline = [
@@ -114,7 +114,7 @@ test_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=0,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -149,7 +149,7 @@ eval_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=0,
+        sweeps_num=4,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
