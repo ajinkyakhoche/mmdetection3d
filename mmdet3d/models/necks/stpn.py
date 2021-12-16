@@ -82,6 +82,7 @@ class STPN(nn.Module):
         batch, seq, z, h, w = x.size()
 
         x = x.view(-1, x.size(-3), x.size(-2), x.size(-1))
+        # torch.backends.cudnn.enabled = False
         x = F.relu(self.bn_pre_1(self.conv_pre_1(x)))
         x = F.relu(self.bn_pre_2(self.conv_pre_2(x)))
 
@@ -142,7 +143,7 @@ class STPN(nn.Module):
 
         x_8 = F.relu(self.bn8_1(self.conv8_1(torch.cat((F.interpolate(x_7, scale_factor=(2, 2)), x), dim=1))))
         res_x = F.relu(self.bn8_2(self.conv8_2(x_8)))
-
+        # torch.backends.cudnn.enabled = True
         return res_x
 
 

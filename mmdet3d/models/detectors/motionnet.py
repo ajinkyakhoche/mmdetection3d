@@ -155,6 +155,7 @@ class MotionNet(MVXTwoStageDetector):
     def forward_train(self,
                       points=None,
                       points_next=None,
+                      points_sweeps=None,
                       flow=None,
                       T_lidar2ego=None, 
                       T_lidar2cam=None,
@@ -201,10 +202,13 @@ class MotionNet(MVXTwoStageDetector):
         # voxels, num_points, coors = self.voxelize(points_next)
         # voxelized_pc_next = dict(voxels=voxels, num_points=num_points, coors=coors)
         
+        voxels, num_points, coors, pt_in_voxel_mask = self.voxelize(points_sweeps)
+        voxelized_sweeps = dict(voxels=voxels, num_points=num_points, coors=coors, pt_in_voxel_mask=pt_in_voxel_mask)
+        
         # img_feats, pts_feats = self.extract_feat(
         #     voxelized_pc, img=img, img_metas=img_metas)
         img_feats, pts_feats = self.extract_feat(
-            {key:torch.cat(value, dim=0) for (key,value) in voxelized_pc.items()}, img=img, img_metas=img_metas)
+            {key:torch.cat(value, dim=0) for (key,value) in voxelized_sweeps.items()}, img=img, img_metas=img_metas)
         
         losses = dict()
         if pts_feats is not None:

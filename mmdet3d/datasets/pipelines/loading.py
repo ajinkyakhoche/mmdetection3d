@@ -261,7 +261,8 @@ class LoadPointsFromMultiSweeps(object):
                         points_np[:,:3] = pc[:,:3]
                         points = points.new_point(points_np)
                         results['delta_T'] = delta_T
-                results[pts] = points
+                output = pts+'_'+'sweeps'
+                results[output] = points
 
                 # if pts == 'points':
                 #     results['flow'] = np.concatenate(sweep_flow_list)
