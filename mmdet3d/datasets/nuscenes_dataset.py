@@ -217,9 +217,46 @@ class NuScenesDataset(Custom3DDataset):
             timestamp=info['timestamp'] / 1e6,
         )
 
+        if 'lidar_path_next' in info:
+            input_dict.update(
+                pts_filename_next=info['lidar_path_next'],
+            )
+        
+        if 'sweeps_next' in info:
+            input_dict.update(
+                sweeps_next=info['sweeps_next'],
+            )
+        if 'timestamp_next' in info:
+            input_dict.update(
+                timestamp_next=info['timestamp_next'] / 1e6
+            )
+
+        if 'flow_path' in info:
+            input_dict.update(
+                flow_path=info['flow_path'],
+            )
+        
+        if 'T_ego2global' in info:
+            input_dict.update(
+                T_ego2global=info['T_ego2global'],
+            )
+
+        if 'T_ego2global_next' in info:
+            input_dict.update(
+                T_ego2global_next=info['T_ego2global_next'],
+            )
+        
+        if 'T_lidar2ego' in info:
+            input_dict.update(
+                T_lidar2ego=info['T_lidar2ego'],
+            )
+                
         if self.modality['use_camera']:
             image_paths = []
             lidar2img_rts = []
+            lidar2cam_rts = []
+            cam_intrinsic = []
+            cam_name = []
             for cam_type, cam_info in info['cams'].items():
                 image_paths.append(cam_info['data_path'])
                 # obtain lidar to image transformation matrix
@@ -233,13 +270,35 @@ class NuScenesDataset(Custom3DDataset):
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
                 lidar2img_rt = (viewpad @ lidar2cam_rt.T)
-                lidar2img_rts.append(lidar2img_rt)
 
+                T_cam2lidar = get_transformation_matrix(cam_info['sensor2lidar_rotation'], cam_info['sensor2lidar_translation'])
+                T_lidar2cam = np.linalg.inv(T_cam2lidar)
+
+                lidar2img_rts.append(lidar2img_rt)
+                lidar2cam_rts.append(T_lidar2cam)
+                cam_intrinsic.append(intrinsic)
+                cam_name.append(cam_type)
+            
             input_dict.update(
                 dict(
                     img_filename=image_paths,
                     lidar2img=lidar2img_rts,
                 ))
+
+            input_dict.update(
+                dict(
+                    T_lidar2cam=lidar2cam_rts,#[np.linalg.inv(tf) for tf in lidar2cam_rts],
+                    lidar2img=lidar2img_rts,
+                    cam_intrinsic=cam_intrinsic,
+                    cam_name=cam_name
+                ))     
+
+        # test lidar to cam correspondence
+        # from mmdet3d.ops.render_pointcloud_in_image import map_pointcloud_to_image, show_overlay
+        # lidar = np.fromfile(input_dict['pts_filename'], dtype=np.float32).reshape(-1, 5)[:, :3]
+        # img = mmcv.imread(input_dict['img_filename'][0])
+        # pt, mask, coloring, _ = map_pointcloud_to_image(lidar[:,:3], img, input_dict['T_lidar2cam'][0], input_dict['cam_intrinsic'][0])
+        # show_overlay(pt, mask, img, coloring=coloring, title='hello')
 
         if not self.test_mode:
             annos = self.get_ann_info(index)
@@ -647,3 +706,9 @@ def lidar_nusc_box_to_global(info,
         box.translate(np.array(info['ego2global_translation']))
         box_list.append(box)
     return box_list
+
+def get_transformation_matrix(rot, trans):
+    T = np.eye(4)
+    T[:3,:3] = rot
+    T[:3,-1] = trans
+    return T

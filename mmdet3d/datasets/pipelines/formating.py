@@ -53,7 +53,8 @@ class DefaultFormatBundle(object):
         for key in [
                 'proposals', 'gt_bboxes', 'gt_bboxes_ignore', 'gt_labels',
                 'gt_labels_3d', 'attr_labels', 'pts_instance_mask',
-                'pts_semantic_mask', 'centers2d', 'depths'
+                'pts_semantic_mask', 'centers2d', 'depths', 'T_lidar2ego', 
+                'T_lidar2cam', 'cam_intrinsic', 'delta_T'
         ]:
             if key not in results:
                 continue
@@ -207,8 +208,11 @@ class DefaultFormatBundle3D(DefaultFormatBundle):
         if 'points' in results:
             assert isinstance(results['points'], BasePoints)
             results['points'] = DC(results['points'].tensor)
+        if 'points_next' in results:
+            assert isinstance(results['points_next'], BasePoints)
+            results['points_next'] = DC(results['points_next'].tensor)
 
-        for key in ['voxels', 'coors', 'voxel_centers', 'num_points']:
+        for key in ['voxels', 'coors', 'voxel_centers', 'num_points', 'flow']:
             if key not in results:
                 continue
             results[key] = DC(to_tensor(results[key]), stack=False)
