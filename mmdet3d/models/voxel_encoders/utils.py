@@ -137,6 +137,8 @@ class PFNLayer(nn.Module):
 
         self.norm = build_norm_layer(norm_cfg, self.units)[1]
         self.linear = nn.Linear(in_channels, self.units, bias=False)
+        torch.nn.init.xavier_uniform(self.linear.weight)
+        # m.bias.data.fill_(0.01)
 
         assert mode in ['max', 'avg']
         self.mode = mode
@@ -158,8 +160,19 @@ class PFNLayer(nn.Module):
             torch.Tensor: Features of Pillars.
         """
         x = self.linear(inputs)
+        if torch.isnan(self.linear.weight).any() or (self.linear.weight.grad is not None and torch.isnan(self.linear.weight.grad).any()):
+            print('PFNLayer Linear weights and grads have NaN')
+            return
+
+        # torch.backends.cudnn.enabled = False
         x = self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2,
-                                                               1).contiguous()
+                                                            1).contiguous()
+        # torch.backends.cudnn.enabled = True
+
+        if torch.isnan(self.norm.running_mean).any() or torch.isnan(self.norm.running_var).any():
+            print('PFNLayer BN1d running mean and var have NaN')
+            return
+
         x = F.relu(x)
 
         if self.mode == 'max':
