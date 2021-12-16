@@ -14,7 +14,7 @@ from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d.datasets import NuScenesDataset
 import torch, numpy, PIL
 import sys
-from tools.optical_flow.flowlib import flow_to_image, compute_color, dispOpticalFlow, draw_flow, put_optical_flow_arrows_on_image
+from tools.optical_flow.flowlib import flow_to_image, compute_color, dispOpticalFlow#, draw_flow, put_optical_flow_arrows_on_image
 import matplotlib.pyplot as plt
 import open3d as o3d
 from tools.optical_flow.pwcnet import * 
@@ -301,7 +301,7 @@ def _fill_trainval_infos(nusc,
     val_nusc_infos = []
 
     # create folder for saving flow info
-    flow_path = os.path.join(nusc.dataroot, 'flow_img')
+    flow_path = os.path.join(nusc.dataroot, 'flow')
     if not os.path.exists(flow_path):
         os.mkdir(flow_path)
 
@@ -420,6 +420,20 @@ def _fill_trainval_infos(nusc,
             else:
                 break
         info['sweeps'] = sweeps
+
+        # obtain sweeps for next key-frame
+        sweeps_next = []
+        while len(sweeps_next) < max_sweeps:
+            if not sd_rec_next['prev'] == '':
+                sweep_next = obtain_sensor2top(nusc, sd_rec_next['prev'], cs_record_next['translation'],
+                                          Quaternion(cs_record_next['rotation']).rotation_matrix, 
+                                          pose_record_next['translation'], Quaternion(pose_record_next['rotation']).rotation_matrix, 'lidar')
+                sweeps_next.append(sweep_next)
+                sd_rec_next = nusc.get('sample_data', sd_rec_next['prev'])
+            else:
+                break
+        info['sweeps_next'] = sweeps_next
+
         # obtain annotation
         if not test:
             annotations = [
