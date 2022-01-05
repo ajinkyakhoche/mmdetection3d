@@ -62,14 +62,10 @@ def create_nuscenes_infos(root_path,
     train_scenes = list(
         filter(lambda x: x in available_scene_names, train_scenes))
     val_scenes = list(filter(lambda x: x in available_scene_names, val_scenes))
-    train_scenes = set([
-        available_scenes[available_scene_names.index(s)]['token']
-        for s in train_scenes
-    ])
-    val_scenes = set([
-        available_scenes[available_scene_names.index(s)]['token']
-        for s in val_scenes
-    ])
+    train_scenes = {key: value for (key, value) in zip(train_scenes, [available_scenes[available_scene_names.index(s)]['token']
+        for s in train_scenes])}
+    val_scenes = {key: value for (key, value) in zip(val_scenes, [available_scenes[available_scene_names.index(s)]['token']
+        for s in val_scenes])}
 
     test = 'test' in version
     if test:
@@ -262,9 +258,20 @@ def _fill_trainval_infos(nusc,
                 [a['num_radar_pts'] for a in annotations])
             info['valid_flag'] = valid_flag
 
-        if sample['scene_token'] in train_scenes:
+        info.update(
+                scene_token=sample['scene_token'],
+            )
+        if sample['scene_token'] in train_scenes.values():
+            scene_name = [key for (key, value) in train_scenes.items() if value==sample['scene_token'] ][0]
+            info.update(
+                scene_name = scene_name
+            )
             train_nusc_infos.append(info)
         else:
+            scene_name = [key for (key, value) in val_scenes.items() if value==sample['scene_token'] ][0]
+            info.update(
+                scene_name = scene_name
+            )
             val_nusc_infos.append(info)
 
     return train_nusc_infos, val_nusc_infos
