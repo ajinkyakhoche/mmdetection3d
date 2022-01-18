@@ -157,25 +157,49 @@ class PFNLayer(nn.Module):
         Returns:
             torch.Tensor: Features of Pillars.
         """
+        if ((torch.isnan(inputs)).all()):
+            print('utils.py, 1111')
         x = self.linear(inputs)
+        
+        if ((torch.isnan(x)).all()):
+            print('utils.py, 1.5:1', 'print input before linear', inputs)
+            print("max, and min of input", torch.max(torch.max(torch.max(inputs))), torch.min(torch.min(torch.min(inputs))))
+        if ((torch.isnan(x.permute(0, 2, 1).contiguous())).all()):
+            print('utils.py, 1.5:2')
+        if ((torch.isnan(self.norm(x.permute(0, 2, 1).contiguous()))).all()):
+            print('utils.py, 1.5:3')
+        if ((torch.isnan(self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2,
+                                                               1).contiguous())).all()):
+            print('utils.py, 1.5:4')
+
+
         x = self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2,
                                                                1).contiguous()
         x = F.relu(x)
+
+        if ((torch.isnan(x)).all()):
+            print('utils.py, 2222')
 
         if self.mode == 'max':
             if aligned_distance is not None:
                 x = x.mul(aligned_distance.unsqueeze(-1))
             x_max = torch.max(x, dim=1, keepdim=True)[0]
+
         elif self.mode == 'avg':
             if aligned_distance is not None:
                 x = x.mul(aligned_distance.unsqueeze(-1))
             x_max = x.sum(
                 dim=1, keepdim=True) / num_voxels.type_as(inputs).view(
                     -1, 1, 1)
+        
+        if ((torch.isnan(x_max)).all()):
+            print('utils.py, 3333')
 
         if self.last_vfe:
             return x_max
         else:
             x_repeat = x_max.repeat(1, inputs.shape[1], 1)
             x_concatenated = torch.cat([x, x_repeat], dim=2)
+            if ((torch.isnan(x_concatenated)).all()):
+                print('utils.py, 4444')
             return x_concatenated

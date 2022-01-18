@@ -211,3 +211,5 @@ python tools/train.py configs/motionnet/motionnet_02pillar_stpn_cyclic_nus.py \
 ```
 
 python tools/train.py configs/motionnet/motionnet_02pillar_stpn_cyclic_nus.py      --cfg-options data.train.ann_file='/local_storage/datasets/nuscenes/nus_5_sweeps_infos_train.pkl' data.val.ann_file='/local_storage/datasets/nuscenes/nus_5_sweeps_infos_val.pkl'
+
+# ln -s /local_storage/datasets/nuscenes/two_flows/flow_PillarMotion flow

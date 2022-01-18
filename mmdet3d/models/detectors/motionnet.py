@@ -107,13 +107,21 @@ class MotionNet(MVXTwoStageDetector):
         # if not self.with_pts_bbox:
         #     return None
         # voxels, num_points, coors = self.voxelize(pts)
-
+        if ((torch.isnan(voxels).all()) or (torch.isnan(num_points).all()) or (torch.isnan(coors).all())):
+            print('here, 33333333333333333333')
         voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
+        if ((torch.isnan(voxel_features)).all()):
+            print('here, 4444444444444444')
         batch_size = coors[-1, 0] + 1
         x = self.pts_middle_encoder(voxel_features, coors, batch_size)
+
+        if ((torch.isnan(x)).all()):
+            print('here, 55555555555555')
         # x = self.pts_backbone(x)
         if self.with_pts_neck:
             x1 = self.pts_neck(x)
+            if ((torch.isnan(x1)).all()):
+                print('here, 666666666666666666')
         return x1
     
     def extract_feat(self, voxelized_pc, img, img_metas):
@@ -121,6 +129,8 @@ class MotionNet(MVXTwoStageDetector):
         img_feats = self.extract_img_feat(img, img_metas)
         pts_feats = self.extract_pts_feat(voxels=voxelized_pc['voxels'], num_points=voxelized_pc['num_points'],
             coors=voxelized_pc['coors'], img_feats=img_feats, img_metas=img_metas)
+        if ((torch.isnan(pts_feats)).all()):
+            print('here, 11111111111111111111')
         return (img_feats, pts_feats)
 
     @torch.no_grad()
@@ -139,6 +149,8 @@ class MotionNet(MVXTwoStageDetector):
         for res in points:
             res_voxels, res_coors, res_num_points, res_pt_in_voxel_mask = self.pts_voxel_layer.generate(res.cpu().numpy())
             voxels.append(torch.from_numpy(res_voxels).to(res.device))
+            if ((torch.isnan(torch.from_numpy(res_voxels).to(res.device))).all()):
+                print("here, 8888888888888888")
             coors.append(torch.from_numpy(res_coors).to(res.device))
             num_points.append(torch.from_numpy(res_num_points).to(res.device))
             pt_in_voxel_mask.append(torch.from_numpy(res_pt_in_voxel_mask).to(res.device))
@@ -195,7 +207,12 @@ class MotionNet(MVXTwoStageDetector):
         Returns:
             dict: Losses of different branches.
         """
+        for res in points:
+            if ((torch.isnan(res)).all()):
+                print("here, 777777777777777777777777777777")
+                return None
         voxels, num_points, coors, pt_in_voxel_mask = self.voxelize(points)
+
         voxelized_pc = dict(voxels=voxels, num_points=num_points, coors=coors, pt_in_voxel_mask=pt_in_voxel_mask)
         
         # voxels, num_points, coors = self.voxelize(points_next)
@@ -264,6 +281,8 @@ class MotionNet(MVXTwoStageDetector):
 
         # get predicted motion field
         pred_motion = self.motion_pred_head(pts_feats)
+        if ((torch.isnan(pred_motion)).all()):
+            print('here, 222222222222222222222222')
         # import matplotlib.pyplot as plt
         # m = pred_motion[0,:,:,:]
         # m = pred_motion[0,:,:,:]
@@ -386,6 +405,10 @@ class MotionNet(MVXTwoStageDetector):
         # average for batch size
         chamfer_loss /= batch_size
         optical_flow_loss /= batch_size
+
+        # # change to follow the same scale
+        # chamfer_loss /= 1e5
+        # optical_flow_loss /= (1e5)
         
         smooth_loss = torch.mean(torch.abs(2*pred_motion[:, 1:-1] -  pred_motion[:, :-2]- pred_motion[:, 2:])) + \
              torch.mean(torch.abs(2*pred_motion[:, :, 1:-1] -  pred_motion[:, :, :-2]- pred_motion[:, :, 2:]))

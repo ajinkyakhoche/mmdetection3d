@@ -440,7 +440,10 @@ class LoadPointsFromFile(object):
                 points = np.load(pts_filename)
             else:
                 points = np.fromfile(pts_filename, dtype=np.float32)
-
+        if (np.isnan(points).all()):
+            print("here, 9999999999999999999999999999999_1")
+        if (np.isnan(points).any()):
+            print("here, 9999999999999999999999999999999_2")
         return points
 
     def __call__(self, results):
@@ -460,6 +463,8 @@ class LoadPointsFromFile(object):
                 pts_filename = results[key]
                 try:
                     points = self._load_points(pts_filename)
+                    if (np.isnan(points).all()):
+                        raise Exception
                 except:
                     print("1111111111111111111111 SKIP the file,", pts_filename)
                     return None

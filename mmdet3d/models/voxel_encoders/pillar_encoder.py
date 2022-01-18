@@ -107,6 +107,14 @@ class PillarFeatureNet(nn.Module):
             points_mean = features[:, :, :3].sum(
                 dim=1, keepdim=True) / num_points.type_as(features).view(
                     -1, 1, 1)
+            # num_voxels_set_0_to_1 = num_points.clone()
+            # num_voxels_set_0_to_1[num_voxels_set_0_to_1==0] = 1
+            # if ((num_voxels_set_0_to_1==0).any()):
+            #     print("pillar_encoder.py, 0000000000000, there are some pillars have 0 points")
+            # points_mean = features[:, :, :3].sum( dim=1, keepdim=True) / num_voxels_set_0_to_1.type_as(
+            #     features).view(-1, 1, 1)
+            if ((torch.isnan(points_mean)).all()):
+                print('pillar_encoder.py, 111111111111111')
             f_cluster = features[:, :, :3] - points_mean
             features_ls.append(f_cluster)
 
@@ -129,14 +137,20 @@ class PillarFeatureNet(nn.Module):
                 f_center[:, :, 1] = f_center[:, :, 1] - (
                     coors[:, 2].type_as(features).unsqueeze(1) * self.vy +
                     self.y_offset)
+            if ((torch.isnan(f_center)).all()):
+                print('pillar_encoder.py, 222222222222')
             features_ls.append(f_center)
 
         if self._with_distance:
             points_dist = torch.norm(features[:, :, :3], 2, 2, keepdim=True)
+            if ((torch.isnan(points_dist)).all()):
+                print('pillar_encoder.py, 333333333333')
             features_ls.append(points_dist)
 
         # Combine together feature decorations
         features = torch.cat(features_ls, dim=-1)
+        if ((torch.isnan(features)).all()):
+            print('pillar_encoder.py, 333333333333')
         # The feature decorations were calculated without regard to whether
         # pillar was empty. Need to ensure that
         # empty pillars remain set to zeros.
@@ -144,10 +158,17 @@ class PillarFeatureNet(nn.Module):
         mask = get_paddings_indicator(num_points, voxel_count, axis=0)
         mask = torch.unsqueeze(mask, -1).type_as(features)
         features *= mask
-
+        if ((torch.isnan(features)).all()):
+            print('pillar_encoder.py, 444444444')
+        count = 0
         for pfn in self.pfn_layers:
             features = pfn(features, num_points)
-
+            # features = pfn(features, num_voxels_set_0_to_1)
+            if ((torch.isnan(features.squeeze())).all()):
+                print("pillar_encoder.py, 4.5, count'", count)
+            count += 1
+        if ((torch.isnan(features.squeeze())).all()):
+            print('pillar_encoder.py,555555555555')
         return features.squeeze()
 
 
