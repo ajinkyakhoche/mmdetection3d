@@ -97,23 +97,52 @@ def build_data_cfg(config_path, skip_type, cfg_options):
 
 def save_velo_data(bag, infos, prepared_data):
     scan_l = prepared_data['points']._data.numpy()
+    # retain only 3 din
+    scan_l = scan_l[:,:3]
     l2e_r_mat = Quaternion(infos['lidar2ego_rotation']).rotation_matrix
     l2e_mat = get_transformation_matrix(l2e_r_mat, infos['lidar2ego_translation'])
     scan_l[:,:3] = transform_pc(scan_l[:,:3].copy(), l2e_mat)
-    # scan_l = np.fromfile(infos['lidar_path'], dtype=np.float32).reshape((-1,5))
+
+    # add color
+    if 'color_to_lidar' in prepared_data and 'color_mask' in prepared_data:
+        color_mask = prepared_data['color_mask']
+        scan_l = scan_l[color_mask,:].tolist()
+        color_to_lidar = prepared_data['color_to_lidar']
+        color_visible = [struct.unpack('I', struct.pack('BBBB', c[0][2], c[0][1], c[0][0], 255)) for c in zip(color_to_lidar[color_mask,:])]
+        # color_visible = np.array([struct.unpack('I', struct.pack('BBBB', c[0][2], c[0][1], c[0][0], 255))[0] for c in zip(color_to_lidar[color_mask,:])])
+        # scan_l = np.hstack((scan_l, color_visible.reshape(-1,1)))
+        [scan.extend(rgb) for (scan, rgb) in zip(scan_l, color_visible)]
+
+    # add semantic labels
+    if 'pts_semantickittiformat_mask' in prepared_data:
+        # scan_l = np.hstack((scan_l, prepared_data['pts_semantickittiformat_mask'].reshape(-1,1)))
+        labels = prepared_data['pts_semantickittiformat_mask'].reshape(-1,1)
+        labels = labels[color_mask]
+        [scan.extend(l) for (scan, l) in zip(scan_l, labels)]
+        # [scan.extend([0]) for scan in scan_l]
+        # for (scan, l) in zip(scan_l, labels):
+        #     scan[-1]=l.tolist()[0]
+
+    # else:
+    #     [scan.extend(np.array([0])) for scan in scan_l]
+
+    # if 'color_mask' in prepared_data:
+    #     color_mask = prepared_data['color_mask']
+    #     scan_l = scan_l[color_mask,:]
+
     # create header
     header = Header()
     header.frame_id = 'base_link'
-    # for raw
-    # header.stamp = rospy.Time.from_sec(float(datetime.strftime(dt, "%s.%f")))
     header.stamp = rospy.Time.from_sec(infos['timestamp']*1e-6)
 
     # fill pcl msg
     fields = [PointField('x', 0, PointField.FLOAT32, 1),
                 PointField('y', 4, PointField.FLOAT32, 1),
                 PointField('z', 8, PointField.FLOAT32, 1),
-                PointField('i', 12, PointField.FLOAT32, 1),
-                PointField('t', 16, PointField.FLOAT32, 1)
+                # PointField('i', 12, PointField.FLOAT32, 1),
+                # PointField('t', 16, PointField.FLOAT32, 1)
+                PointField('rgb', 12, PointField.UINT32, 1),
+                PointField('label', 16, PointField.UINT32, 1)
                 ]
     pcl_msg = pcl2.create_cloud(header, fields, scan_l)
 
